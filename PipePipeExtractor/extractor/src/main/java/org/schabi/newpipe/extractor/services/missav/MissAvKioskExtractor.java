@@ -14,6 +14,8 @@ import org.schabi.newpipe.extractor.stream.StreamInfoItemsCollector;
 import org.schabi.newpipe.extractor.utils.PageNavigation;
 
 import java.io.IOException;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import javax.annotation.Nonnull;
 
 public final class MissAvKioskExtractor extends KioskExtractor<StreamInfoItem> {
@@ -34,15 +36,7 @@ public final class MissAvKioskExtractor extends KioskExtractor<StreamInfoItem> {
     @Nonnull
     @Override
     public String getName() {
-        switch (getId()) {
-            case "popular":
-                return "Popular";
-            case "recommended":
-                return "Recommended";
-            case "latest":
-            default:
-                return "Latest";
-        }
+        return MissAvKioskLinkHandlerFactory.getCategoryName(getId());
     }
 
     @Nonnull
@@ -52,15 +46,26 @@ public final class MissAvKioskExtractor extends KioskExtractor<StreamInfoItem> {
         assertPageFetched();
         final StreamInfoItemsCollector collector =
                 new StreamInfoItemsCollector(getServiceId());
-        for (final Element link : document.select("a[href*=/" + MissAvParsingHelper.DEFAULT_LANGUAGE
-                + "/]")) {
+        final Set<String> seen = new LinkedHashSet<>();
+        for (final Element link : document.select("a[href]")) {
             final String href = link.absUrl("href");
-            if (MissAvStreamLinkHandlerFactory.getInstance().onAcceptUrl(href)
-                    && link.selectFirst("img") != null) {
+            if (isVideoCard(href, link) && seen.add(href)) {
                 collector.commit(new MissAvKioskInfoItemExtractor(link));
             }
         }
         return new InfoItemsPage<>(collector, PageNavigation.nextPage(document));
+    }
+
+    private static boolean isVideoCard(final String href, final Element link) {
+        if (link.selectFirst("img") == null || !MissAvStreamLinkHandlerFactory
+                .getInstance().onAcceptUrl(href)) {
+            return false;
+        }
+        try {
+            return MissAvParsingHelper.isVideoId(MissAvParsingHelper.extractId(href));
+        } catch (final ParsingException e) {
+            return false;
+        }
     }
 
     @Override
@@ -68,11 +73,10 @@ public final class MissAvKioskExtractor extends KioskExtractor<StreamInfoItem> {
             throws IOException, ExtractionException {
         final Document nextDocument = MissAvParsingHelper.fetchDocument(page.getUrl());
         final StreamInfoItemsCollector collector = new StreamInfoItemsCollector(getServiceId());
-        for (final Element link : nextDocument.select("a[href*=/"
-                + MissAvParsingHelper.DEFAULT_LANGUAGE + "/]")) {
+        final Set<String> seen = new LinkedHashSet<>();
+        for (final Element link : nextDocument.select("a[href]")) {
             final String href = link.absUrl("href");
-            if (MissAvStreamLinkHandlerFactory.getInstance().onAcceptUrl(href)
-                    && link.selectFirst("img") != null) {
+            if (isVideoCard(href, link) && seen.add(href)) {
                 collector.commit(new MissAvKioskInfoItemExtractor(link));
             }
         }
