@@ -1,6 +1,10 @@
 package org.schabi.newpipe.extractor.services.missav;
 
 import org.schabi.newpipe.extractor.StreamingService;
+import org.schabi.newpipe.extractor.Page;
+import org.schabi.newpipe.extractor.localization.Localization;
+import org.schabi.newpipe.extractor.linkhandler.ListLinkHandler;
+import org.schabi.newpipe.extractor.kiosk.KioskExtractor;
 import org.schabi.newpipe.extractor.bulletComments.BulletCommentsExtractor;
 import org.schabi.newpipe.extractor.channel.ChannelExtractor;
 import org.schabi.newpipe.extractor.channel.ChannelTabExtractor;
@@ -20,6 +24,7 @@ import org.schabi.newpipe.extractor.subscription.SubscriptionExtractor;
 import org.schabi.newpipe.extractor.suggestion.SuggestionExtractor;
 
 import java.util.Collections;
+import java.io.IOException;
 
 public final class MissAvService extends StreamingService {
     public MissAvService(final int id) {
@@ -78,7 +83,20 @@ public final class MissAvService extends StreamingService {
 
     @Override
     public KioskList getKioskList() throws ExtractionException {
-        final KioskList list = new KioskList(this);
+        final KioskList list = new KioskList(this) {
+            @Override
+            public KioskExtractor getExtractorByUrl(final String url, final Page nextPage,
+                                                    final Localization localization)
+                    throws ExtractionException, IOException {
+                if (MissAvCategoryOptions.isCategoryOptionUrl(url)) {
+                    final String id = MissAvKioskLinkHandlerFactory.getInstance().getId(url);
+                    final ListLinkHandler handler = new ListLinkHandler(url, url, id,
+                            Collections.emptyList(), null);
+                    return new MissAvKioskExtractor(MissAvService.this, handler, id);
+                }
+                return super.getExtractorByUrl(url, nextPage, localization);
+            }
+        };
         try {
             for (final String categoryId :
                     MissAvKioskLinkHandlerFactory.getCategoryIds()) {
