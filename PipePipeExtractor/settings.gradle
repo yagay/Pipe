@@ -1,2 +1,10 @@
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
 include 'extractor', 'timeago-parser'
 rootProject.name = 'PipePipeExtractor'
