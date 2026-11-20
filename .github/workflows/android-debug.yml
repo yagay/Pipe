@@ -3,6 +3,8 @@ on:
   push:
     paths:
       - '.github/workflows/android-debug.yml'
+      - 'PipePipeClient/**'
+      - 'PipePipeExtractor/**'
   workflow_dispatch:
 permissions:
   contents: read
