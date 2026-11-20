@@ -80,24 +80,15 @@ public final class MissAvService extends StreamingService {
     public KioskList getKioskList() throws ExtractionException {
         final KioskList list = new KioskList(this);
         try {
-            list.addKioskEntry((service, url, kioskId) -> new MissAvKioskExtractor(
-                            service,
-                            MissAvKioskLinkHandlerFactory.getInstance().fromId(kioskId),
-                            kioskId),
-                    MissAvKioskLinkHandlerFactory.getInstance(),
-                    "latest");
-            list.addKioskEntry((service, url, kioskId) -> new MissAvKioskExtractor(
-                            service,
-                            MissAvKioskLinkHandlerFactory.getInstance().fromId(kioskId),
-                            kioskId),
-                    MissAvKioskLinkHandlerFactory.getInstance(),
-                    "popular");
-            list.addKioskEntry((service, url, kioskId) -> new MissAvKioskExtractor(
-                            service,
-                            MissAvKioskLinkHandlerFactory.getInstance().fromId(kioskId),
-                            kioskId),
-                    MissAvKioskLinkHandlerFactory.getInstance(),
-                    "recommended");
+            for (final String categoryId :
+                    MissAvKioskLinkHandlerFactory.getCategoryIds()) {
+                list.addKioskEntry((service, url, kioskId) -> new MissAvKioskExtractor(
+                                service,
+                                MissAvKioskLinkHandlerFactory.getInstance().fromId(kioskId),
+                                kioskId),
+                        MissAvKioskLinkHandlerFactory.getInstance(),
+                        categoryId);
+            }
             list.setDefaultKiosk("latest");
         } catch (final Exception e) {
             throw new ExtractionException("Could not initialize MissAV kiosks", e);
