@@ -124,7 +124,8 @@ public final class MissAvBrowseCatalog {
         // Directory/listing links can be supported separately. Never confuse actual
         // video-detail IDs with category list pages.
         final String slug = path.substring(path.lastIndexOf('/') + 1);
-        return slug.isEmpty() || !MissAvParsingHelper.isVideoId(slug);
+        return slug.isEmpty() || "naughty4610".equals(slug) || "naughty0930".equals(slug)
+                || !MissAvParsingHelper.isVideoId(slug);
     }
 
     public static String normalizedSiteUrl(final String url) {
