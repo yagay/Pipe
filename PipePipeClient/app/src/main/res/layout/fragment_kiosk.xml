@@ -5,8 +5,50 @@
     android:layout_height="match_parent"
     android:orientation="vertical">
 
+    <LinearLayout
+        android:id="@+id/missav_browse_header"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentTop="true"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fillViewport="true"
+            android:scrollbars="none">
+            <LinearLayout
+                android:id="@+id/missav_browse_channels"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal" />
+        </HorizontalScrollView>
+
+        <LinearLayout
+            android:id="@+id/missav_browse_toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal" />
+
+        <ScrollView
+            android:id="@+id/missav_browse_panel_scroll"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fillViewport="false"
+            android:visibility="gone">
+            <GridLayout
+                android:id="@+id/missav_browse_panel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:columnCount="3" />
+        </ScrollView>
+    </LinearLayout>
+
     <org.schabi.newpipe.views.NewPipeRecyclerView
         android:id="@+id/items_list"
+        android:layout_below="@id/missav_browse_header"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:scrollbars="vertical"
