@@ -23,6 +23,7 @@ import org.schabi.newpipe.extractor.NewPipe;
 import org.schabi.newpipe.extractor.StreamingService;
 import org.schabi.newpipe.extractor.exceptions.ExtractionException;
 import org.schabi.newpipe.extractor.services.missav.MissAvService;
+import org.schabi.newpipe.extractor.services.missav.MissAvCategoryOptions;
 import org.schabi.newpipe.extractor.services.missav.MissAvKioskLinkHandlerFactory;
 import org.schabi.newpipe.util.NavigationHelper;
 import org.schabi.newpipe.extractor.kiosk.KioskInfo;
@@ -35,6 +36,9 @@ import org.schabi.newpipe.util.KioskTranslator;
 import org.schabi.newpipe.util.Localization;
 
 import io.reactivex.rxjava3.core.Single;
+import io.reactivex.rxjava3.disposables.CompositeDisposable;
+import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers;
+import io.reactivex.rxjava3.schedulers.Schedulers;
 
 /**
  * Created by Christian Schabesberger on 23.09.17.
@@ -70,6 +74,7 @@ public class KioskFragment extends BaseListInfoFragment<StreamInfoItem, KioskInf
             "xxx-av", "married-slash", "4610", "0930"},
         {"Asia AV", "madou", "twav", "furuke", "korean-live", "chinese-live"}
     };
+    private final CompositeDisposable missAvOptionTasks = new CompositeDisposable();
     String kioskId = "";
     String kioskTranslatedName;
     ContentCountry contentCountry;
@@ -93,6 +98,16 @@ public class KioskFragment extends BaseListInfoFragment<StreamInfoItem, KioskInf
                 kioskLinkHandlerFactory.fromId(kioskId).getUrl(), kioskId);
         instance.kioskId = kioskId;
         return instance;
+    }
+
+    public static KioskFragment getInstanceForMissAvUrl(final int serviceId,
+                                                       final String categoryUrl)
+            throws ExtractionException {
+        final String id = MissAvKioskLinkHandlerFactory.getInstance().getId(categoryUrl);
+        final KioskFragment fragment = new KioskFragment();
+        fragment.setInitialData(serviceId, categoryUrl, id);
+        fragment.kioskId = id;
+        return fragment;
     }
 
     public KioskFragment() {
@@ -192,6 +207,7 @@ public class KioskFragment extends BaseListInfoFragment<StreamInfoItem, KioskInf
         primary.removeAllViews();
         secondary.removeAllViews();
         secondaryScroll.setVisibility(View.GONE); // Initially collapsed.
+        loadMissAvPageOptions(rootView);
         final TextView[] headings = new TextView[CATEGORY_GROUPS.length];
         final int[] expandedIndex = {-1};
         final int pad = (int) TypedValue.applyDimension(
@@ -243,6 +259,81 @@ public class KioskFragment extends BaseListInfoFragment<StreamInfoItem, KioskInf
                 }
             });
         }
+    }
+
+
+    private void loadMissAvPageOptions(@NonNull final View rootView) {
+        final HorizontalScrollView filtersScroller =
+                rootView.findViewById(R.id.missav_filter_scroller);
+        final HorizontalScrollView sortsScroller =
+                rootView.findViewById(R.id.missav_sort_scroller);
+        filtersScroller.setVisibility(View.GONE);
+        sortsScroller.setVisibility(View.GONE);
+        final String selectedUrl = url;
+        missAvOptionTasks.add(Single.fromCallable(() -> MissAvCategoryOptions.load(selectedUrl))
+                .subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(options -> {
+                    if (getView() != rootView || !selectedUrl.equals(url)) {
+                        return;
+                    }
+                    showMissAvOptionRow(rootView, R.id.missav_filter_options,
+                            filtersScroller, "Filter", options.filters);
+                    showMissAvOptionRow(rootView, R.id.missav_sort_options,
+                            sortsScroller, "Sort", options.sorts);
+                }, error -> {
+                    // Keep the video list usable if this category has no filter menu,
+                    // or if its HTML cannot be loaded at this moment.
+                    android.util.Log.w("MissAV", "Category options not available", error);
+                }));
+    }
+
+    private void showMissAvOptionRow(@NonNull final View rootView, final int containerId,
+                                     @NonNull final HorizontalScrollView scroller,
+                                     @NonNull final String title,
+                                     @NonNull final java.util.List<MissAvCategoryOptions.Option> options) {
+        final LinearLayout row = rootView.findViewById(containerId);
+        row.removeAllViews();
+        if (options.isEmpty()) {
+            scroller.setVisibility(View.GONE);
+            return;
+        }
+        final int pad = (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP,
+                10, getResources().getDisplayMetrics());
+        final TextView heading = new TextView(requireContext());
+        heading.setText(title + ":");
+        heading.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        heading.setPadding(pad, pad / 2, 0, pad / 2);
+        row.addView(heading);
+        for (final MissAvCategoryOptions.Option option : options) {
+            final TextView choice = new TextView(requireContext());
+            choice.setText(option.label);
+            choice.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+            choice.setPadding(pad, pad / 2, pad, pad / 2);
+            choice.setSelected(option.selected);
+            choice.setAlpha(option.selected ? 1f : 0.75f);
+            choice.setTypeface(null, option.selected
+                    ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+            row.addView(choice);
+            choice.setOnClickListener(v -> {
+                if (option.url.equals(url)) {
+                    return;
+                }
+                try {
+                    NavigationHelper.openMissAvCategoryUrl(getFM(), serviceId, option.url);
+                } catch (final ExtractionException e) {
+                    showSnackBarError(new ErrorInfo(e, UserAction.UI_ERROR,
+                            "Opening MissAV category option"));
+                }
+            });
+        }
+        scroller.setVisibility(View.VISIBLE);
+    }
+
+    @Override
+    public void onDestroyView() {
+        missAvOptionTasks.clear();
+        super.onDestroyView();
     }
 
     /*//////////////////////////////////////////////////////////////////////////
