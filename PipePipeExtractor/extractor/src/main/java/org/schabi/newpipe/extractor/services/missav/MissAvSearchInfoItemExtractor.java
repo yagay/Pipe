@@ -22,8 +22,9 @@ final class MissAvSearchInfoItemExtractor implements StreamInfoItemExtractor {
     @Override
     public String getName() throws ParsingException {
         final String title = firstUsableTitle(
-                "title_ja", "ja_title", "display_title_ja", "name_ja",
-                "title", "display_title", "name", "english_title", "title_en", "en_title");
+                "title_en", "en_title", "english_title", "display_title_en",
+                "title", "display_title", "name", "title_ja", "ja_title",
+                "display_title_ja", "name_ja");
         final String usableTitle = title.isEmpty() ? fetchDetailTitle() : title;
         return formatTitle(usableTitle);
     }
