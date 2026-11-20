@@ -33,7 +33,7 @@ import javax.crypto.spec.SecretKeySpec;
 
 public final class MissAvParsingHelper {
     public static final String BASE_URL = "https://missav.ws";
-    public static final String DEFAULT_LANGUAGE = "ja";
+    public static final String DEFAULT_LANGUAGE = "en";
 
     private static final String RECOMBEE_HOST = "client-rapi-missav.recombee.com";
     private static final String DATABASE_ID = "missav-default";
@@ -76,7 +76,7 @@ public final class MissAvParsingHelper {
                         + "(KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36"));
         headers.put("Accept", Collections.singletonList(
                 "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"));
-        headers.put("Accept-Language", Collections.singletonList("ja,en-US;q=0.8,en;q=0.6"));
+        headers.put("Accept-Language", Collections.singletonList("en-US,en;q=0.9,ja;q=0.5"));
         return headers;
     }
 
@@ -89,7 +89,7 @@ public final class MissAvParsingHelper {
                 referer == null || referer.isEmpty() ? BASE_URL + "/" : referer));
         headers.put("Origin", Collections.singletonList(BASE_URL));
         headers.put("Accept", Collections.singletonList("*/*"));
-        headers.put("Accept-Language", Collections.singletonList("ja,en-US;q=0.8,en;q=0.6"));
+        headers.put("Accept-Language", Collections.singletonList("en-US,en;q=0.9,ja;q=0.5"));
         return headers;
     }
 
@@ -204,7 +204,7 @@ public final class MissAvParsingHelper {
                 continue;
             }
             final JsonObject properties = new JsonObject();
-            putIfNotEmpty(properties, "title_ja", extractCardTitle(link));
+            putIfNotEmpty(properties, "title_en", extractCardTitle(link));
             putIfNotEmpty(properties, "thumbnail", extractCardThumbnail(link));
             results.put(id, new MissAvSearchResult(id, toVideoUrl(id), properties));
             if (results.size() >= count) {
@@ -465,7 +465,7 @@ public final class MissAvParsingHelper {
         }
         final String normalizedHost = url.replaceFirst(
                 "^https?://(?:www\\.)?missav\\.(?:ai|wa)", BASE_URL);
-        return normalizedHost.replaceFirst("/(?:en|zh|tw|ko|th|vi|id|ms|de|fr|es|pt)/",
+        return normalizedHost.replaceFirst("/(?:ja|en|zh|tw|ko|th|vi|id|ms|de|fr|es|pt)/",
                 "/" + DEFAULT_LANGUAGE + "/");
     }
 
