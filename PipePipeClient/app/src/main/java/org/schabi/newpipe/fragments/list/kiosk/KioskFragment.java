@@ -1,11 +1,9 @@
 package org.schabi.newpipe.fragments.list.kiosk;
 
 import android.os.Bundle;
-import android.app.AlertDialog;
-import android.view.MenuItem;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.HorizontalScrollView;
 import android.util.TypedValue;
 import android.view.LayoutInflater;
 import android.view.Menu;
@@ -63,7 +61,6 @@ import io.reactivex.rxjava3.core.Single;
  */
 
 public class KioskFragment extends BaseListInfoFragment<StreamInfoItem, KioskInfo> {
-    private static final int CATEGORY_MENU_ID = 0x4D495353;
     private static final String[][] CATEGORY_GROUPS = {
         {"Watch JAV", "latest", "recommended", "popular", "release",
             "uncensored-leak", "english-subtitle", "vr", "today-hot", "weekly-hot", "monthly-hot"},
@@ -159,10 +156,6 @@ public class KioskFragment extends BaseListInfoFragment<StreamInfoItem, KioskInf
     public void onCreateOptionsMenu(@NonNull final Menu menu,
                                     @NonNull final MenuInflater inflater) {
         super.onCreateOptionsMenu(menu, inflater);
-        if (isMissAv()) {
-            menu.add(Menu.NONE, CATEGORY_MENU_ID, Menu.NONE, "Categories")
-                    .setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM);
-        }
         final ActionBar supportActionBar = activity.getSupportActionBar();
         if (supportActionBar != null && useAsFrontPage) {
             supportActionBar.setDisplayHomeAsUpEnabled(false);
@@ -170,12 +163,9 @@ public class KioskFragment extends BaseListInfoFragment<StreamInfoItem, KioskInf
     }
 
     @Override
-    public boolean onOptionsItemSelected(@NonNull final MenuItem item) {
-        if (item.getItemId() == CATEGORY_MENU_ID && isMissAv()) {
-            showCategoryPicker();
-            return true;
-        }
-        return super.onOptionsItemSelected(item);
+    protected void initViews(final View rootView, final Bundle savedInstanceState) {
+        super.initViews(rootView, savedInstanceState);
+        setupMissAvTopCategories(rootView);
     }
 
     private boolean isMissAv() {
@@ -186,69 +176,73 @@ public class KioskFragment extends BaseListInfoFragment<StreamInfoItem, KioskInf
         }
     }
 
-    private void showCategoryPicker() {
-        final android.content.Context context = requireContext();
-        final ScrollView scroll = new ScrollView(context);
-        final LinearLayout root = new LinearLayout(context);
-        root.setOrientation(LinearLayout.VERTICAL);
-        final int pad = (int) TypedValue.applyDimension(
-                TypedValue.COMPLEX_UNIT_DIP, 16, getResources().getDisplayMetrics());
-        root.setPadding(pad, 0, pad, 0);
-        scroll.addView(root);
-        final LinearLayout[] sections = new LinearLayout[CATEGORY_GROUPS.length];
+    private void setupMissAvTopCategories(@NonNull final View rootView) {
+        final View header = rootView.findViewById(R.id.missav_category_header);
+        if (header == null) {
+            return;
+        }
+        header.setVisibility(isMissAv() ? View.VISIBLE : View.GONE);
+        if (!isMissAv()) {
+            return;
+        }
+        final LinearLayout primary = rootView.findViewById(R.id.missav_primary_categories);
+        final LinearLayout secondary = rootView.findViewById(R.id.missav_secondary_categories);
+        final HorizontalScrollView secondaryScroll =
+                rootView.findViewById(R.id.missav_secondary_scroller);
+        primary.removeAllViews();
+        secondary.removeAllViews();
+        secondaryScroll.setVisibility(View.GONE); // Initially collapsed.
         final TextView[] headings = new TextView[CATEGORY_GROUPS.length];
-        final AlertDialog dialog = new AlertDialog.Builder(context)
-                .setTitle("MissAV Categories")
-                .setView(scroll)
-                .setNegativeButton(android.R.string.cancel, null)
-                .create();
-
+        final int[] expandedIndex = {-1};
+        final int pad = (int) TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP, 12, getResources().getDisplayMetrics());
         for (int i = 0; i < CATEGORY_GROUPS.length; i++) {
-            final int groupIndex = i;
+            final int index = i;
             final String[] group = CATEGORY_GROUPS[i];
-            final TextView heading = new TextView(context);
-            heading.setText("▸ " + group[0]);
-            heading.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
-            heading.setPadding(0, pad, 0, pad);
+            final TextView heading = new TextView(requireContext());
+            heading.setText(group[0] + " ▾");
+            heading.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+            heading.setPadding(pad, pad, pad, pad);
+            heading.setClickable(true);
+            heading.setFocusable(true);
             headings[i] = heading;
-            root.addView(heading);
-            final LinearLayout section = new LinearLayout(context);
-            section.setOrientation(LinearLayout.VERTICAL);
-            section.setPadding(pad, 0, 0, pad);
-            section.setVisibility(View.GONE);
-            sections[i] = section;
-            root.addView(section);
-            for (int n = 1; n < group.length; n++) {
-                final String id = group[n];
-                final TextView choice = new TextView(context);
-                choice.setText(MissAvKioskLinkHandlerFactory.getCategoryName(id)
-                        .replace(group[0] + " · ", ""));
-                choice.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
-                choice.setPadding(0, pad / 2, 0, pad / 2);
-                section.addView(choice);
-                choice.setOnClickListener(v -> {
-                    dialog.dismiss();
-                    try {
-                        NavigationHelper.openKioskFragment(getFM(), serviceId, id);
-                    } catch (final ExtractionException e) {
-                        showSnackBarError(new ErrorInfo(e, UserAction.UI_ERROR,
-                                "Opening MissAV category"));
-                    }
-                });
-            }
+            primary.addView(heading);
             heading.setOnClickListener(v -> {
-                final boolean shouldOpen = sections[groupIndex].getVisibility() == View.GONE;
-                for (int j = 0; j < sections.length; j++) {
-                    sections[j].setVisibility(View.GONE);
-                    headings[j].setText("▸ " + CATEGORY_GROUPS[j][0]);
+                final boolean opening = expandedIndex[0] != index;
+                expandedIndex[0] = opening ? index : -1;
+                for (int j = 0; j < headings.length; j++) {
+                    headings[j].setText(CATEGORY_GROUPS[j][0]
+                            + (expandedIndex[0] == j ? " ▴" : " ▾"));
+                    headings[j].setSelected(expandedIndex[0] == j);
                 }
-                if (shouldOpen) {
-                    sections[groupIndex].setVisibility(View.VISIBLE);
-                    headings[groupIndex].setText("▾ " + group[0]);
+                secondary.removeAllViews();
+                secondaryScroll.setVisibility(opening ? View.VISIBLE : View.GONE);
+                if (!opening) {
+                    return;
+                }
+                secondaryScroll.scrollTo(0, 0);
+                for (int n = 1; n < group.length; n++) {
+                    final String id = group[n];
+                    final TextView choice = new TextView(requireContext());
+                    choice.setText(MissAvKioskLinkHandlerFactory.getCategoryName(id)
+                            .replace(group[0] + " · ", ""));
+                    choice.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+                    choice.setPadding(pad, pad / 2, pad, pad / 2);
+                    choice.setSelected(id.equals(kioskId));
+                    choice.setClickable(true);
+                    choice.setFocusable(true);
+                    secondary.addView(choice);
+                    choice.setOnClickListener(child -> {
+                        try {
+                            NavigationHelper.openKioskFragment(getFM(), serviceId, id);
+                        } catch (final ExtractionException e) {
+                            showSnackBarError(new ErrorInfo(e, UserAction.UI_ERROR,
+                                    "Opening MissAV category"));
+                        }
+                    });
                 }
             });
         }
-        dialog.show();
     }
 
     /*//////////////////////////////////////////////////////////////////////////
