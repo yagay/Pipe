@@ -49,16 +49,16 @@ public final class MissAvKioskLinkHandlerFactory extends ListLinkHandlerFactory 
         add("10musume", "Uncensored · 10musume", "10musume");
         add("pacopacomama", "Uncensored · pacopacomama", "pacopacomama");
         add("gachinco", "Uncensored · Gachinco", "gachinco");
-        add("xxx-av", "Uncensored · XXX-AV", "xxx-av");
-        add("married-slash", "Uncensored · Married Slash", "married-slash");
-        add("4610", "Uncensored · Naughty 4610", "4610");
-        add("0930", "Uncensored · Naughty 0930", "0930");
+        add("xxx-av", "Uncensored · XXX-AV", "xxxav");
+        add("married-slash", "Uncensored · Married Slash", "marriedslash");
+        add("4610", "Uncensored · Naughty 4610", "naughty4610");
+        add("0930", "Uncensored · Naughty 0930", "naughty0930");
 
         add("madou", "Asia AV · Madou", "madou");
         add("twav", "Asia AV · TWAV", "twav");
         add("furuke", "Asia AV · Furuke", "furuke");
-        add("korean-live", "Asia AV · Korean Live", "korean-live");
-        add("chinese-live", "Asia AV · Chinese Live", "chinese-live");
+        add("korean-live", "Asia AV · Korean Live", "klive");
+        add("chinese-live", "Asia AV · Chinese Live", "clive");
     }
 
     private static void add(final String id, final String title, final String path) {
