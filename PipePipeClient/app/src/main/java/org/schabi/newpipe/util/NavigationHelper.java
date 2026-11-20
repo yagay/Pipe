@@ -510,6 +510,17 @@ public final class NavigationHelper {
                 .commit();
     }
 
+    public static void openMissAvCategoryUrl(final FragmentManager fragmentManager,
+                                               final int serviceId,
+                                               final String categoryUrl)
+            throws ExtractionException {
+        defaultTransaction(fragmentManager)
+                .replace(R.id.fragment_holder,
+                        KioskFragment.getInstanceForMissAvUrl(serviceId, categoryUrl))
+                .addToBackStack(null)
+                .commit();
+    }
+
     public static void openLocalPlaylistFragment(final FragmentManager fragmentManager,
                                                  final long playlistId, final String name) {
         defaultTransaction(fragmentManager)
