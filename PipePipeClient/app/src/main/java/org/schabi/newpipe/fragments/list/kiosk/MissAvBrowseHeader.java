@@ -40,6 +40,8 @@ final class MissAvBrowseHeader {
     private Map<String, List<MissAvBrowseCatalog.Entry>> entries =
             Collections.emptyMap();
     private int expandedGroup = -1;
+    private List<MissAvBrowseCatalog.Entry> currentFilters = Collections.emptyList();
+    private List<MissAvBrowseCatalog.Entry> currentSorts = Collections.emptyList();
     private TextView[] headings = new TextView[MissAvBrowseCatalog.GROUPS.length];
     private final int padding;
 
@@ -65,8 +67,7 @@ final class MissAvBrowseHeader {
                     }
                     entries = categories;
                     renderChannels();
-                    renderToolbar(currentCategoryLabel(), Collections.emptyList(),
-                            Collections.emptyList());
+                    renderToolbar(currentCategoryLabel(), currentFilters, currentSorts);
                 }, error -> android.util.Log.w("MissAV", "Category navigation unavailable", error)));
 
         subscriptions.add(Single.fromCallable(() ->
@@ -75,7 +76,9 @@ final class MissAvBrowseHeader {
                 .observeOn(AndroidSchedulers.mainThread())
                 .subscribe(options -> {
                     if (isAttached()) {
-                        renderToolbar(currentCategoryLabel(), options.filters, options.sorts);
+                        currentFilters = options.filters;
+                        currentSorts = options.sorts;
+                        renderToolbar(currentCategoryLabel(), currentFilters, currentSorts);
                     }
                 }, error -> android.util.Log.w("MissAV", "Page options unavailable", error)));
     }
