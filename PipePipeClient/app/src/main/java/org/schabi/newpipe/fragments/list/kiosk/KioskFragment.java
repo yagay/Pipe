@@ -18,6 +18,8 @@ import org.schabi.newpipe.extractor.ListExtractor;
 import org.schabi.newpipe.extractor.NewPipe;
 import org.schabi.newpipe.extractor.StreamingService;
 import org.schabi.newpipe.extractor.exceptions.ExtractionException;
+import org.schabi.newpipe.extractor.services.missav.MissAvService;
+import org.schabi.newpipe.util.NavigationHelper;
 import org.schabi.newpipe.extractor.kiosk.KioskInfo;
 import org.schabi.newpipe.extractor.linkhandler.ListLinkHandlerFactory;
 import org.schabi.newpipe.extractor.localization.ContentCountry;
@@ -54,6 +56,7 @@ import io.reactivex.rxjava3.core.Single;
  */
 
 public class KioskFragment extends BaseListInfoFragment<StreamInfoItem, KioskInfo> {
+    private MissAvBrowseHeader missAvBrowseHeader;
     String kioskId = "";
     String kioskTranslatedName;
     ContentCountry contentCountry;
@@ -76,6 +79,15 @@ public class KioskFragment extends BaseListInfoFragment<StreamInfoItem, KioskInf
         instance.setInitialData(serviceId,
                 kioskLinkHandlerFactory.fromId(kioskId).getUrl(), kioskId);
         instance.kioskId = kioskId;
+        return instance;
+    }
+
+    public static KioskFragment getMissAvCategoryInstance(final int sid,
+                                                           final String categoryUrl,
+                                                           final String title) {
+        final KioskFragment instance = new KioskFragment();
+        instance.setInitialData(sid, categoryUrl, title);
+        instance.kioskId = title;
         return instance;
     }
 
@@ -130,6 +142,41 @@ public class KioskFragment extends BaseListInfoFragment<StreamInfoItem, KioskInf
                              @Nullable final ViewGroup container,
                              @Nullable final Bundle savedInstanceState) {
         return inflater.inflate(R.layout.fragment_kiosk, container, false);
+    }
+
+    @Override
+    protected void initViews(final View rootView, final Bundle savedInstanceState) {
+        super.initViews(rootView, savedInstanceState);
+        final View header = rootView.findViewById(R.id.missav_browse_header);
+        if (header == null) {
+            return;
+        }
+        try {
+            if (!(NewPipe.getService(serviceId) instanceof MissAvService)) {
+                header.setVisibility(View.GONE);
+                return;
+            }
+        } catch (final ExtractionException e) {
+            header.setVisibility(View.GONE);
+            return;
+        }
+        header.setVisibility(View.VISIBLE);
+        missAvBrowseHeader = new MissAvBrowseHeader(rootView, url, option -> {
+            if (option.url.equals(url)) {
+                return;
+            }
+            NavigationHelper.openMissAvBrowseFragment(getFM(), serviceId,
+                    option.url, option.label);
+        });
+    }
+
+    @Override
+    public void onDestroyView() {
+        if (missAvBrowseHeader != null) {
+            missAvBrowseHeader.dispose();
+            missAvBrowseHeader = null;
+        }
+        super.onDestroyView();
     }
 
     /*//////////////////////////////////////////////////////////////////////////
