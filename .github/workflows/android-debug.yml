@@ -32,7 +32,7 @@ jobs:
           echo "Using $SDKMGR"
           yes | "$SDKMGR" --sdk_root="$SDK_ROOT" --licenses >/dev/null || true
           "$SDKMGR" --sdk_root="$SDK_ROOT" --channel=3 --list | grep -E 'platforms;android-37|build-tools;36' || true
-          "$SDKMGR" --sdk_root="$SDK_ROOT" --channel=3 --install "platforms;android-37" "build-tools;36.0.0" "platform-tools"
+          "$SDKMGR" --sdk_root="$SDK_ROOT" --channel=3 --install "platforms;android-37.0" "build-tools;36.0.0" "platform-tools"
       - name: Cache Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Build Debug APK
