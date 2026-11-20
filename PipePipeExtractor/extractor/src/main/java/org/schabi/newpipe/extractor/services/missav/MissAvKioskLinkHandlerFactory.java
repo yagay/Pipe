@@ -19,13 +19,15 @@ public final class MissAvKioskLinkHandlerFactory extends ListLinkHandlerFactory 
 
     @Override
     public String getId(final String url) {
-        if (url != null && url.contains("popular")) {
-            return "popular";
+        if (url == null || url.isEmpty()) {
+            return "latest";
         }
-        if (url != null && url.contains("recommended")) {
-            return "recommended";
+        final String path = url.split("[?#]", 2)[0].replaceFirst("/+$", "");
+        final String slug = path.substring(path.lastIndexOf('/') + 1);
+        if ("new".equals(slug) || "en".equals(slug) || "ja".equals(slug)) {
+            return "latest";
         }
-        return "latest";
+        return slug.isEmpty() ? "latest" : slug;
     }
 
     @Override
