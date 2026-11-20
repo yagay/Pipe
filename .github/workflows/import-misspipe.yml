@@ -10,14 +10,22 @@ jobs:
   import:
     runs-on: ubuntu-latest
     steps:
-      - name: Clone upstream repository
+      - name: Check out destination
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Clone upstream source
         run: |
-          git clone --mirror https://codeberg.org/Kdroidwin/MISSPipe.git upstream.git || git clone --mirror https://github.com/Kdroidwin/MISSPipe.git upstream.git
-      - name: Push source and history to this repository
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          git clone --depth 1 https://codeberg.org/Kdroidwin/MISSPipe.git /tmp/misspipe-source
+      - name: Import source excluding upstream workflows
         run: |
-          cd upstream.git
-          git remote add destination "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          HEAD_BRANCH=$(git symbolic-ref --short HEAD | sed 's@^refs/heads/@@')
-          git push destination "refs/heads/${HEAD_BRANCH}:refs/heads/main" --force
+          rsync -a --delete --exclude='.git/' --exclude='.github/workflows/' /tmp/misspipe-source/ ./
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'No source changes to import'
+          else
+            git commit -m 'Import MISSPipe source from Codeberg (excluding upstream workflows)'
+            git push origin HEAD:main
+          fi
