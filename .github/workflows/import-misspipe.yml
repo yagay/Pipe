@@ -1,0 +1,23 @@
+name: Import MISSPipe source
+on:
+  push:
+    paths:
+      - '.github/workflows/import-misspipe.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone upstream repository
+        run: |
+          git clone --mirror https://codeberg.org/Kdroidwin/MISSPipe.git upstream.git || git clone --mirror https://github.com/Kdroidwin/MISSPipe.git upstream.git
+      - name: Push source and history to this repository
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd upstream.git
+          git remote add destination "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          HEAD_BRANCH=$(git symbolic-ref --short HEAD | sed 's@^refs/heads/@@')
+          git push destination "refs/heads/${HEAD_BRANCH}:refs/heads/main" --force
