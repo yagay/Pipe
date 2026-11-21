@@ -136,8 +136,7 @@ final class SiteBrowseHeader {
             if (group != null ? BrowseUrlState.selected(pageUrl, entry.getUrl(), group)
                     : (entry.getId().equals(activeId)
                         || (activeId.startsWith("category:")
-                            && entry.getUrl().split("[?#]", 2)[0].equals(
-                            pageUrl.split("[?#]", 2)[0])))) {
+                            && BrowseUrlState.sameCategory(pageUrl, entry.getUrl())))) {
                 selected = i;
             }
         }
@@ -160,8 +159,7 @@ final class SiteBrowseHeader {
             String selectedName = "Categories ▾";
             for (final SiteBrowseCatalog.Entry item : categories) {
                 if (activeId.startsWith("category:")
-                        && item.getUrl().split("[?#]", 2)[0]
-                            .equals(activeId.substring("category:".length()).split("[?#]", 2)[0])) {
+                        && BrowseUrlState.sameCategory(pageUrl, item.getUrl())) {
                     selectedName = item.getLabel() + " ▾";
                     break;
                 }
