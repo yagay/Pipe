@@ -3609,6 +3609,13 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
     }
 
     public void seekTo(final long positionMillis) {
+        if (supjavHlsEngine != null) {
+            supjavHlsEngine.command("seekFraction("
+                    + (Math.max(0f, Math.min(1f,
+                            positionMillis / (float) Math.max(1L, supjavHlsDurationMs))))
+                    + ")");
+            return;
+        }
         if (DEBUG) {
             Log.d(TAG, "seekBy() called with: position = [" + positionMillis + "]");
         }
@@ -3662,6 +3669,10 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
     //region Player actions (play, pause, previous, fast-forward, ...)
 
     public void play() {
+        if (supjavHlsEngine != null) {
+            supjavHlsEngine.command("play()");
+            return;
+        }
         if (DEBUG) {
             Log.d(TAG, "play() called");
         }
@@ -3685,6 +3696,10 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
     }
 
     public void pause() {
+        if (supjavHlsEngine != null) {
+            supjavHlsEngine.command("pause()");
+            return;
+        }
         if (DEBUG) {
             Log.d(TAG, "pause() called");
         }
@@ -3698,6 +3713,10 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
     }
 
     public void playPause() {
+        if (supjavHlsEngine != null) {
+            supjavHlsEngine.command("toggle()");
+            return;
+        }
         if (DEBUG) {
             Log.d(TAG, "onPlayPause() called");
         }
@@ -3747,6 +3766,10 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
     }
 
     public void fastForward() {
+        if (supjavHlsEngine != null) {
+            supjavHlsEngine.command("seek(10)");
+            return;
+        }
         if (DEBUG) {
             Log.d(TAG, "fastRewind() called");
         }
@@ -3755,6 +3778,10 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
     }
 
     public void fastRewind() {
+        if (supjavHlsEngine != null) {
+            supjavHlsEngine.command("seek(-10)");
+            return;
+        }
         if (DEBUG) {
             Log.d(TAG, "fastRewind() called");
         }
@@ -4781,7 +4808,7 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
     public void onClick(final View v) {
         if (supjavHlsEngine != null) {
             if (v.getId() == binding.playPauseButton.getId()) {
-                supjavHlsEngine.command("toggle()");
+                playPause();
             } else if (v.getId() == binding.playerCloseButton.getId()) {
                 stopSupjavHls();
                 context.sendBroadcast(new Intent(VideoDetailFragment.ACTION_HIDE_MAIN_PLAYER));
