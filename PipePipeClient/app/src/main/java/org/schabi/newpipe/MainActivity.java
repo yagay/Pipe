@@ -61,6 +61,7 @@ import org.schabi.newpipe.databinding.ToolbarLayoutBinding;
 import org.schabi.newpipe.error.ErrorUtil;
 import org.schabi.newpipe.extractor.NewPipe;
 import org.schabi.newpipe.extractor.ServiceList;
+import org.schabi.newpipe.extractor.ServiceCategoryRegistry;
 import org.schabi.newpipe.extractor.StreamingService;
 import org.schabi.newpipe.extractor.exceptions.ExtractionException;
 import org.schabi.newpipe.extractor.exceptions.ReCaptchaException;
@@ -369,24 +370,32 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showServices() {
-        for (final StreamingService s : NewPipe.getServices()) {
-            final String title = s.getServiceInfo().getName()
-                    + (ServiceHelper.isBeta(s) ? " (Legacy)" : "");
+        addServiceCategory("Native Sites", ServiceCategoryRegistry.Category.NATIVE);
+        addServiceCategory("Extended Sites", ServiceCategoryRegistry.Category.EXTENDED);
 
-            final MenuItem menuItem = drawerLayoutBinding.navigation.getMenu()
-                    .add(R.id.menu_services_group, s.getServiceId(), ORDER, title)
-                    .setIcon(ServiceHelper.getIcon(s.getServiceId()));
-
-            // PeerTube specifics only apply to the legacy PeerTube service, not to MISSPipe's
-            // fourth visible service which reuses id 3 for Pornhub.
-            if (ServiceList.PeerTube.equals(s)) {
-                enhancePeertubeMenu(s, menuItem);
-            }
-        }
         final MenuItem selectedService = drawerLayoutBinding.navigation.getMenu()
                 .findItem(ServiceHelper.getSelectedServiceId(this));
         if (selectedService != null) {
             selectedService.setChecked(true);
+        }
+    }
+
+    private void addServiceCategory(final String title,
+                                    final ServiceCategoryRegistry.Category category) {
+        // Headers are disabled navigation rows; negative IDs never overlap a service.
+        drawerLayoutBinding.navigation.getMenu()
+                .add(R.id.menu_services_group,
+                        category == ServiceCategoryRegistry.Category.NATIVE ? -1001 : -1002,
+                        ORDER, title).setEnabled(false);
+        for (final StreamingService s : ServiceCategoryRegistry.servicesIn(category)) {
+            final String serviceName = s.getServiceInfo().getName()
+                    + (ServiceHelper.isBeta(s) ? " (Legacy)" : "");
+            final MenuItem menuItem = drawerLayoutBinding.navigation.getMenu()
+                    .add(R.id.menu_services_group, s.getServiceId(), ORDER, serviceName)
+                    .setIcon(ServiceHelper.getIcon(s.getServiceId()));
+            if (ServiceList.PeerTube.equals(s)) {
+                enhancePeertubeMenu(s, menuItem);
+            }
         }
     }
 
