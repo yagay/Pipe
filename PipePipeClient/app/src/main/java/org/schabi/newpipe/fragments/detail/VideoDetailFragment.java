@@ -1619,10 +1619,23 @@ public final class VideoDetailFragment
             openVideoPlayerAutoFullscreen();
             return;
         }
+        final PlayQueue retainedQueue = playQueue != null && playQueue.getItem() != null
+                && playQueue.getItem().getServiceId() == ServiceList.Supjav.getServiceId()
+                && SupjavServerCatalog.pageUrl(playQueue.getItem().getUrl())
+                        .equals(SupjavServerCatalog.pageUrl(target))
+                ? playQueue : null;
+        if (retainedQueue != null) {
+            // Keep the original browse/search queue and its pagination.
+            // Switch the playback source of this one entry only.
+            retainedQueue.getItem().setSupjavSelectedSource(target);
+            if (player != null && player.getPlayQueue() == retainedQueue) {
+                player.reloadCurrentSupjavQueueSource();
+            }
+        }
         supjavPlayAfterSelection = true;
         setAutoPlay(true);
         selectAndLoadVideo(ServiceList.Supjav.getServiceId(), target,
-                currentInfo == null ? title : currentInfo.getName(), null);
+                currentInfo == null ? title : currentInfo.getName(), retainedQueue);
     }
 
     private void showSupjavCdPicker() {

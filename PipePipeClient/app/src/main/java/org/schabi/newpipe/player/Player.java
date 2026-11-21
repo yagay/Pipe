@@ -3953,6 +3953,22 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
         playQueue.setIndex(index);
     }
 
+    /**
+     * Reuse the current paginated queue when the user switches the Supjav
+     * CD/server. The queue item now resolves the newly selected source,
+     * without replacing the queue with a one-item playlist.
+     */
+    public void reloadCurrentSupjavQueueSource() {
+        if (playQueue == null || playQueue.getItem() == null
+                || playQueue.getItem().getServiceId()
+                        != org.schabi.newpipe.extractor.ServiceList.Supjav.getServiceId()
+                || exoPlayerIsNull()) {
+            return;
+        }
+        setRecovery();
+        reloadPlayQueueManager();
+    }
+
     @Override
     public void onPlayQueueEdited() {
         notifyPlaybackUpdateToListeners();

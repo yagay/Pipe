@@ -3,6 +3,8 @@ package org.schabi.newpipe.player.playqueue;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import org.schabi.newpipe.extractor.ServiceList;
+import org.schabi.newpipe.extractor.services.extended.supjav.SupjavServerCatalog;
 import org.schabi.newpipe.extractor.stream.StreamInfo;
 import org.schabi.newpipe.extractor.stream.StreamInfoItem;
 import org.schabi.newpipe.extractor.stream.StreamType;
@@ -39,6 +41,14 @@ public class PlayQueueItem implements Serializable {
 
     private long recoveryPosition;
     private Throwable error;
+
+    /**
+     * The queue stores the site's canonical video URL for thumbnails/order.
+     * Supjav's CD/server selection is a playback property of this item,
+     * not a reason to discard the page's queue or its pagination cursor.
+     */
+    @Nullable
+    private String supjavSelectedSource;
 
     PlayQueueItem(@NonNull final StreamInfo info) {
         this(info.getName(), info.getUrl(), info.getServiceId(), info.getDuration(),
@@ -127,8 +137,33 @@ public class PlayQueueItem implements Serializable {
         return error;
     }
 
+    /**
+     * Preserve a manually selected Supjav server within the existing queue.
+     * The item URL itself remains the canonical page URL.
+     */
+    public void setSupjavSelectedSource(@NonNull final String selectedSource) {
+        if (serviceId != ServiceList.Supjav.getServiceId()
+                || SupjavServerCatalog.selectedIndex(selectedSource) < 0
+                || !SupjavServerCatalog.pageUrl(url)
+                        .equals(SupjavServerCatalog.pageUrl(selectedSource))) {
+            throw new IllegalArgumentException("Supjav server does not belong to queue item");
+        }
+        supjavSelectedSource = selectedSource;
+    }
+
+    @Nullable
+    String getSupjavSelectedSource() {
+        return supjavSelectedSource;
+    }
+
     @NonNull
     public Single<StreamInfo> getStream() {
+        if (serviceId == ServiceList.Supjav.getServiceId()) {
+            // Resolves only the item being played, not every card in a
+            // paginated queue. VAS remains preferred on the item's own page.
+            return SupjavQueueSourceResolver.load(this)
+                    .doOnError(throwable -> error = throwable);
+        }
         return ExtractorHelper.getStreamInfo(this.serviceId, this.url, false)
                 .subscribeOn(Schedulers.io())
                 .doOnError(throwable -> error = throwable);
