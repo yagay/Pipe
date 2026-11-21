@@ -1362,6 +1362,10 @@ public final class VideoDetailFragment
     }
 
     private void openBackgroundPlayer(final boolean append) {
+        if (supjavNeedsSourceSelection()) {
+            showSupjavServerPicker();
+            return;
+        }
 
         final boolean useExternalAudioPlayer = false;
 
@@ -1382,6 +1386,10 @@ public final class VideoDetailFragment
     }
 
     private void openPopupPlayer(final boolean append) {
+        if (supjavNeedsSourceSelection()) {
+            showSupjavServerPicker();
+            return;
+        }
         if (!PermissionHelper.isPopupEnabled(activity)) {
             PermissionHelper.showPopupEnablementToast(activity);
             return;
@@ -1415,10 +1423,7 @@ public final class VideoDetailFragment
     public void openVideoPlayer(final boolean directlyFullscreenIfApplicable) {
         // A Supjav detail is allowed to load without resolving third-party media.
         // Resolve exactly one CD/server only after the user requests playback.
-        if (currentInfo != null
-                && currentInfo.getServiceId() == ServiceList.Supjav.getServiceId()
-                && (SupjavServerCatalog.selectedIndex(currentInfo.getUrl()) < 0
-                    || currentInfo.getVideoStreams().isEmpty())) {
+        if (supjavNeedsSourceSelection()) {
             showSupjavServerPicker();
             return;
         }
@@ -1516,6 +1521,13 @@ public final class VideoDetailFragment
      * One lightweight source switcher, independent of the player's resolution
      * menu. CD and provider are selected before video quality becomes available.
      */
+    private boolean supjavNeedsSourceSelection() {
+        return currentInfo != null
+                && currentInfo.getServiceId() == ServiceList.Supjav.getServiceId()
+                && (SupjavServerCatalog.selectedIndex(currentInfo.getUrl()) < 0
+                    || currentInfo.getVideoStreams().isEmpty());
+    }
+
     private void configureSupjavSourceButton(final StreamInfo info) {
         if (binding == null) return;
         final LinearLayout toolbar = binding.detailSecondaryControlPanel;
