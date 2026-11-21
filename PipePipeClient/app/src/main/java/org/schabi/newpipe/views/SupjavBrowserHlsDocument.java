@@ -137,14 +137,18 @@ public final class SupjavBrowserHlsDocument {
                       // no automatic lowering when its bandwidth is slow.
                       // Pick by resolution, breaking ties by bitrate. For a
                       // single variant with no height, use its source bitrate.
-                      var highest=-1, bestArea=-1, bestBitrate=-1;
+                      var highest=-1,bestHeight=-1,bestWidth=-1,bestBitrate=-1;
                       hls.levels.forEach(function(level,index){
                         var width=Number(level.width)||0;
                         var height=Number(level.height)||0;
-                        var area=width>0&&height>0?width*height:height;
                         var bitrate=Number(level.bitrate)||0;
-                        if(area>bestArea||(area===bestArea&&bitrate>bestBitrate)){
-                          highest=index;bestArea=area;bestBitrate=bitrate;
+                        // In incomplete manifests the height may be known
+                        // while width is omitted. Prioritize source height.
+                        if(height>bestHeight||(height===bestHeight&&
+                          (width>bestWidth||(width===bestWidth&&
+                            bitrate>bestBitrate)))){
+                          highest=index;bestHeight=height;
+                          bestWidth=width;bestBitrate=bitrate;
                         }
                       });
                       report('LEVELS:'+hls.levels.map(function(level){
