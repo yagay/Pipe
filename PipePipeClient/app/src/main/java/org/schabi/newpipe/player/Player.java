@@ -317,6 +317,7 @@ public final class Player implements
     private long supjavHlsPositionMs;
     private int supjavServerIndex = -1;
     private float supjavHlsSpeed = 1f;
+    private final java.util.List<Integer> supjavQualityLevels = new java.util.ArrayList<>();
     private boolean supjavQueueActive;
 
     private final Handler controlsVisibilityHandler = new Handler();
@@ -592,6 +593,7 @@ public final class Player implements
         currentItem = queue.getItem();
         currentMetadata = null;
         supjavHlsSpeed = 1f;
+        supjavQualityLevels.clear();
         supjavHlsPositionMs = 0;
         supjavHlsPaused = true;
         supjavHlsDurationMs = 0;
@@ -646,6 +648,10 @@ public final class Player implements
                     }
                     @Override public void onQuality(final String label) {
                         if (supjavHlsEngine != null) binding.qualityTextView.setText(label);
+                    }
+                    @Override public void onQualityLevels(final java.util.List<Integer> heights) {
+                        supjavQualityLevels.clear();
+                        supjavQualityLevels.addAll(heights);
                     }
                     @Override public void onPlaying() {
                         if (supjavHlsEngine == null) return;
@@ -738,6 +744,7 @@ public final class Player implements
         supjavHlsPositionMs = 0;
         supjavHlsDurationMs = 0;
         supjavHlsPaused = true;
+        supjavQualityLevels.clear();
         if (supjavQueueActive && playQueue != null) {
             if (playQueueAdapter != null) {
                 playQueueAdapter.unsetSelectedListener();
@@ -845,11 +852,27 @@ public final class Player implements
 
     private void initListeners() {
         binding.qualityTextView.setOnClickListener(v -> {
-            if (supjavHlsEngine != null) {
-                supjavHlsEngine.command("cycleQuality()");
-            } else {
+            if (supjavHlsEngine == null) {
                 new QualityClickListener(this, qualityPopupMenu).onClick(v);
+                return;
             }
+            // Same original PopupMenu surface used by Media3; only the
+            // selectable source levels differ for browser HLS.
+            qualityPopupMenu.getMenu().clear();
+            qualityPopupMenu.getMenu().add(0, 0, 0, "Auto");
+            for (int i = 0; i < supjavQualityLevels.size(); i++) {
+                final int height = supjavQualityLevels.get(i);
+                qualityPopupMenu.getMenu().add(0, i + 1, i + 1,
+                        height > 0 ? height + "p" : "Level " + (i + 1));
+            }
+            qualityPopupMenu.setOnMenuItemClickListener(item -> {
+                if (supjavHlsEngine != null) {
+                    supjavHlsEngine.command("quality(" + (item.getItemId() - 1) + ")");
+                }
+                return true;
+            });
+            qualityPopupMenu.show();
+            isSomePopupMenuVisible = true;
         });
         binding.playbackSpeed.setOnClickListener(v -> {
             if (supjavHlsEngine == null) {
