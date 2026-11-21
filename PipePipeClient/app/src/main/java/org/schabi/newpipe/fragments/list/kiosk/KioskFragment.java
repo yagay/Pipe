@@ -202,9 +202,8 @@ public class KioskFragment extends BaseListInfoFragment<StreamInfoItem, KioskInf
                         try {
                             NavigationHelper.openKioskFragment(getFM(), serviceId, entry.getId());
                         } catch (final ExtractionException e) {
-                                showSnackBarError(new ErrorInfo(e, UserAction.UI_ERROR,
-                                        "Opening site browse page"));
-                            }
+                            showSnackBarError(new ErrorInfo(e, UserAction.UI_ERROR,
+                                    "Opening site browse page"));
                         }
                     });
         } catch (final ExtractionException e) {
