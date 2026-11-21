@@ -937,7 +937,7 @@ public final class Player implements
         }
         final SupjavServerCatalog.Entry selected = selectedSupjavSource();
         final String activeCd = selected == null ? null : selected.part;
-        final PopupMenu menu = new PopupMenu(themeWrapper, binding.supjavServerButton);
+        final PopupMenu menu = new PopupMenu(context, binding.supjavServerButton);
         int count = 0;
         for (final SupjavServerCatalog.Entry entry : supjavSourceEntries) {
             if (activeCd != null && !activeCd.equals(entry.part)) continue;
