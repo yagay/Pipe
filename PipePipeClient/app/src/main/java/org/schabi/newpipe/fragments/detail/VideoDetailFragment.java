@@ -1086,18 +1086,36 @@ public final class VideoDetailFragment
                     }
                 }, throwable -> {
                     supjavPlayAfterSelection = false;
-                    final boolean selectedLuc = serviceId == ServiceList.Supjav.getServiceId()
+                    final boolean isSelectedSupjav = serviceId
+                            == ServiceList.Supjav.getServiceId()
+                            && SupjavServerCatalog.selectedIndex(url) >= 0;
+                    final boolean selectedLuc = isSelectedSupjav
                             && SupjavServerCatalog.selectedProviderIs(url, "LUC");
-                    if (!selectedLuc) {
+                    // Any selected Supjav provider can use the same proven
+                    // browser transport if its native HTTP requests are refused.
+                    // Keep native Media3 as the primary path when it works.
+                    boolean mediaBlocked = false;
+                    for (Throwable cause = throwable; cause != null;
+                            cause = cause.getCause()) {
+                        final String message = cause.getMessage();
+                        if (message != null && (message.contains("get-referer=403")
+                                || message.contains("get-origin=403")
+                                || message.contains("range-origin=403")
+                                || message.contains("access refused (HTTP 403)"))) {
+                            mediaBlocked = true;
+                            break;
+                        }
+                    }
+                    if (isSelectedSupjav && isAdded() && (selectedLuc || mediaBlocked)) {
+                        DiagnosticLog.event("SUPJAV", "SHARED_BROWSER_FALLBACK",
+                                "index=" + SupjavServerCatalog.selectedIndex(url)
+                                        + " blocked=" + mediaBlocked);
+                        SupjavWebPlayerActivity.open(requireContext(), url);
+                    } else {
                         showError(new ErrorInfo(throwable, UserAction.REQUESTED_STREAM,
                                 url == null ? "no url" : url, serviceId));
                     }
-                    if (selectedLuc && isAdded()) {
-                        DiagnosticLog.event("SUPJAV", "LUC_BROWSER_FALLBACK",
-                                "Native media unavailable; opening selected browser player");
-                        SupjavWebPlayerActivity.open(requireContext(), url);
-                    } else if (serviceId == ServiceList.Supjav.getServiceId()
-                            && SupjavServerCatalog.selectedIndex(url) >= 0 && isAdded()) {
+                    if (isSelectedSupjav && !selectedLuc && !mediaBlocked && isAdded()) {
                         DiagnosticLog.error("SUPJAV", "SELECTED_SERVER_FAILED", throwable,
                                 "serverIndex=" + SupjavServerCatalog.selectedIndex(url));
                         // Preserve the selected line. A CDN rejection is not
