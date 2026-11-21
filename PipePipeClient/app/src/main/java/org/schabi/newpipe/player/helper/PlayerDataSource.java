@@ -401,32 +401,48 @@ public class PlayerDataSource {
 
     public HlsMediaSource.Factory getSupjavHlsMediaSourceFactory(
             @Nullable final String pageReferer) {
-        return getSupjavHlsMediaSourceFactory(pageReferer, true);
+        return getSupjavHlsMediaSourceFactory(pageReferer, true, null);
     }
 
     public HlsMediaSource.Factory getSupjavHlsMediaSourceFactory(
             @Nullable final String pageReferer, final boolean includeOrigin) {
+        return getSupjavHlsMediaSourceFactory(pageReferer, includeOrigin, null);
+    }
+
+    public HlsMediaSource.Factory getSupjavHlsMediaSourceFactory(
+            @Nullable final String pageReferer, final boolean includeOrigin,
+            @Nullable final String sourceUrl) {
         return new HlsMediaSource.Factory(
-                supjavDataSourceFactory(pageReferer, includeOrigin))
+                supjavDataSourceFactory(pageReferer, includeOrigin, sourceUrl))
                 .setAllowChunklessPreparation(true);
     }
 
     public ProgressiveMediaSource.Factory getSupjavProgressiveMediaSourceFactory(
             @Nullable final String pageReferer) {
-        return getSupjavProgressiveMediaSourceFactory(pageReferer, true);
+        return getSupjavProgressiveMediaSourceFactory(pageReferer, true, null);
     }
 
     public ProgressiveMediaSource.Factory getSupjavProgressiveMediaSourceFactory(
             @Nullable final String pageReferer, final boolean includeOrigin) {
+        return getSupjavProgressiveMediaSourceFactory(pageReferer, includeOrigin, null);
+    }
+
+    public ProgressiveMediaSource.Factory getSupjavProgressiveMediaSourceFactory(
+            @Nullable final String pageReferer, final boolean includeOrigin,
+            @Nullable final String sourceUrl) {
         return new ProgressiveMediaSource.Factory(
-                supjavDataSourceFactory(pageReferer, includeOrigin))
+                supjavDataSourceFactory(pageReferer, includeOrigin, sourceUrl))
                 .setContinueLoadingCheckIntervalBytes(continueLoadingCheckIntervalBytes);
     }
 
     private DataSource.Factory supjavDataSourceFactory(
-            @Nullable final String pageReferer, final boolean includeOrigin) {
+            @Nullable final String pageReferer, final boolean includeOrigin,
+            @Nullable final String sourceUrl) {
         final String ref = pageReferer != null && pageReferer.startsWith("https://")
                 ? pageReferer : "https://supjav.com/";
+        final org.schabi.newpipe.player.datasource.SupjavLucNetworkContext.Profile
+                lucProfile = org.schabi.newpipe.player.datasource.SupjavLucNetworkContext
+                        .forMedia(sourceUrl);
         final Map<String, String> headers = new HashMap<>();
         headers.put("Referer", ref);
         headers.put("Accept", "*/*");
@@ -434,13 +450,22 @@ public class PlayerDataSource {
         if (includeOrigin && parsed.getScheme() != null && parsed.getHost() != null) {
             headers.put("Origin", parsed.getScheme() + "://" + parsed.getHost());
         }
-        // Some Supjav mirrors reject Origin even though the same signed media
-        // URL accepts its actual player Referer. Retry this single 403 once
-        // without Origin, not with fabricated cookies or a CAPTCHA bypass.
+        // Only the browser-verified LUC URL uses its WebView User-Agent and
+        // cookies. CookieManager scopes cookies separately for each outgoing
+        // HTTPS host, including HLS child playlists and segments.
         final okhttp3.OkHttpClient supjavClient =
                 DownloaderImpl.getInstance().getClient().newBuilder()
                         .addInterceptor(chain -> {
-                            final okhttp3.Request request = chain.request();
+                            okhttp3.Request request = chain.request();
+                            if (lucProfile != null) {
+                                final String cookie = org.schabi.newpipe.player.datasource
+                                        .SupjavLucNetworkContext.cookiesForRequest(
+                                                request.url().toString());
+                                if (cookie != null) {
+                                    request = request.newBuilder()
+                                            .header("Cookie", cookie).build();
+                                }
+                            }
                             final okhttp3.Response response = chain.proceed(request);
                             if (response.code() != 403 || request.header("Origin") == null) {
                                 if (response.code() >= 400) {
@@ -460,11 +485,14 @@ public class PlayerDataSource {
                                     "host=" + request.url().host());
                             return retried;
                         }).build();
+        final String browserAgent = lucProfile == null ? null : lucProfile.userAgent;
         return new PurifiedDataSource.Factory(context,
                 new OkHttpDataSource.Factory(supjavClient)
-                        .setUserAgent("Mozilla/5.0 (Linux; Android 15; Mobile) "
-                                + "AppleWebKit/537.36 (KHTML, like Gecko) "
-                                + "Chrome/131.0.0.0 Mobile Safari/537.36")
+                        .setUserAgent(browserAgent == null
+                                ? "Mozilla/5.0 (Linux; Android 15; Mobile) "
+                                        + "AppleWebKit/537.36 (KHTML, like Gecko) "
+                                        + "Chrome/131.0.0.0 Mobile Safari/537.36"
+                                : browserAgent)
                         .setDefaultRequestProperties(headers))
                 .setTransferListener(transferListener);
     }
