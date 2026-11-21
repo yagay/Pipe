@@ -1086,66 +1086,17 @@ public final class VideoDetailFragment
                     }
                 }, throwable -> {
                     supjavPlayAfterSelection = false;
-                    final boolean isSelectedSupjav = serviceId
-                            == ServiceList.Supjav.getServiceId()
-                            && SupjavServerCatalog.selectedIndex(url) >= 0;
-                    final boolean selectedLuc = isSelectedSupjav
-                            && SupjavServerCatalog.selectedProviderIs(url, "LUC");
-                    // Any selected Supjav provider can use the same proven
-                    // browser transport if its native HTTP requests are refused.
-                    // Keep native Media3 as the primary path when it works.
-                    boolean mediaBlocked = false;
-                    for (Throwable cause = throwable; cause != null;
-                            cause = cause.getCause()) {
-                        final String message = cause.getMessage();
-                        if (message != null && (message.contains("get-referer=403")
-                                || message.contains("get-origin=403")
-                                || message.contains("range-origin=403")
-                                || message.contains("access refused (HTTP 403)"))) {
-                            mediaBlocked = true;
-                            break;
-                        }
-                    }
-                    if (isSelectedSupjav && isAdded() && (selectedLuc || mediaBlocked)) {
-                        DiagnosticLog.event("SUPJAV", "SHARED_BROWSER_FALLBACK",
-                                "index=" + SupjavServerCatalog.selectedIndex(url)
-                                        + " blocked=" + mediaBlocked);
+                    if (serviceId == ServiceList.Supjav.getServiceId()
+                            && SupjavServerCatalog.selectedIndex(url) >= 0 && isAdded()) {
+                        // Deep links may still arrive at the legacy stream extractor.
+                        // Route them to the same shared in-app player, not a 403
+                        // dialog or a provider-specific media probe.
+                        DiagnosticLog.event("SUPJAV", "UNIFIED_PLAYER_RECOVERY",
+                                "serverIndex=" + SupjavServerCatalog.selectedIndex(url));
                         SupjavWebPlayerActivity.open(requireContext(), url);
                     } else {
                         showError(new ErrorInfo(throwable, UserAction.REQUESTED_STREAM,
                                 url == null ? "no url" : url, serviceId));
-                    }
-                    if (isSelectedSupjav && !selectedLuc && !mediaBlocked && isAdded()) {
-                        DiagnosticLog.error("SUPJAV", "SELECTED_SERVER_FAILED", throwable,
-                                "serverIndex=" + SupjavServerCatalog.selectedIndex(url));
-                        // Preserve the selected line. A CDN rejection is not
-                        // a decoding error, and repeating the same 403 request
-                        // cannot make the current signed URL playable.
-                        Throwable rootCause = throwable;
-                        for (int depth = 0; depth < 8
-                                && rootCause.getCause() != null; depth++) {
-                            rootCause = rootCause.getCause();
-                        }
-                        final String details = rootCause.getMessage() == null
-                                ? "" : rootCause.getMessage();
-                        final boolean media403 = details.contains("get-referer=403")
-                                || details.contains("access refused (HTTP 403)");
-                        final String errorSummary = media403
-                                ? "The selected media server refused all native HTTP "
-                                        + "request profiles (403). This is not a codec error. "
-                                        + "Try its website player, or choose another source."
-                                : "The selected source could not be resolved natively. "
-                                        + "Try its website player or choose another source.";
-                        new AlertDialog.Builder(requireContext())
-                                .setTitle("Supjav server unavailable")
-                                .setMessage(errorSummary)
-                                .setPositiveButton("Web player (selected server)",
-                                        (dialog, which) ->
-                                                SupjavWebPlayerActivity.open(requireContext(), url))
-                                .setNeutralButton("Other servers",
-                                        (dialog, which) -> showSupjavServerPicker())
-                                .setNegativeButton(android.R.string.cancel, null)
-                                .show();
                     }
                 });
     }
@@ -1643,25 +1594,14 @@ public final class VideoDetailFragment
                 "part=" + selected.part + " server=" + selected.provider
                         + " index=" + selected.index);
         final String target = SupjavServerCatalog.selectedUrl(detailUrl, selected.index);
-        // LUC's native manifest probes are refused by the provider (HTTP 403),
-        // while its real iframe works in Android WebView. Do not send this
-        // selected line through the failing extractor before playback.
-        if ("LUC".equalsIgnoreCase(selected.provider)) {
-            supjavPlayAfterSelection = false;
-            DiagnosticLog.event("SUPJAV", "LUC_DIRECT_BROWSER",
-                    "part=" + selected.part + " index=" + selected.index);
-            SupjavWebPlayerActivity.open(requireContext(), target);
-            return;
-        }
-        if (target.equals(url) && currentInfo != null
-                && !currentInfo.getVideoStreams().isEmpty()) {
-            openVideoPlayerAutoFullscreen();
-            return;
-        }
-        supjavPlayAfterSelection = true;
-        setAutoPlay(true);
-        selectAndLoadVideo(ServiceList.Supjav.getServiceId(), target,
-                currentInfo == null ? title : currentInfo.getName(), null);
+        // One playback entry for every Supjav provider/CD. The shared in-app
+        // controller discovers media in its provider WebView and renders
+        // browser HLS where available. No provider-specific branching here.
+        supjavPlayAfterSelection = false;
+        DiagnosticLog.event("SUPJAV", "UNIFIED_PLAYER_OPEN",
+                "part=" + selected.part + " provider=" + selected.provider
+                        + " index=" + selected.index);
+        SupjavWebPlayerActivity.open(requireContext(), target);
     }
 
     private void showSupjavServerPicker() {
