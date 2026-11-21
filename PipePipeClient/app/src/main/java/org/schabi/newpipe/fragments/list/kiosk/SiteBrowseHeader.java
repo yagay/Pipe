@@ -155,26 +155,27 @@ final class SiteBrowseHeader {
      * The original sources remain on their existing flat menu.
      */
     private void showSupjavCategoryGroups() {
-        final String[] kinds = {"Category", "Tag", "Cast", "Maker"};
+        // Show only groups actually discovered on the website. This also
+        // exposes standalone sections such as FC2 when the site links them.
+        final java.util.Map<String, java.util.List<SiteBrowseCatalog.Entry>> groups =
+                new java.util.LinkedHashMap<>();
+        for (final SiteBrowseCatalog.Entry entry : categories) {
+            final String label = entry.getLabel();
+            final int separator = label.indexOf(" / ");
+            if (separator <= 0) continue;
+            final String kind = label.substring(0, separator);
+            groups.computeIfAbsent(kind, ignored -> new java.util.ArrayList<>())
+                    .add(entry);
+        }
+        if (groups.isEmpty()) {
+            showOptions("Supjav categories", categories);
+            return;
+        }
+        final String[] kinds = groups.keySet().toArray(new String[0]);
         new AlertDialog.Builder(root.getContext())
                 .setTitle("Browse Supjav")
-                .setItems(kinds, (dialog, index) -> {
-                    final java.util.List<SiteBrowseCatalog.Entry> group =
-                            new java.util.ArrayList<>();
-                    final String prefix = kinds[index] + " / ";
-                    for (final SiteBrowseCatalog.Entry item : categories) {
-                        if (item.getLabel().startsWith(prefix)) {
-                            group.add(item);
-                        }
-                    }
-                    if (group.isEmpty()) {
-                        new AlertDialog.Builder(root.getContext())
-                                .setMessage("No entries available for " + kinds[index])
-                                .setPositiveButton(android.R.string.ok, null).show();
-                    } else {
-                        showOptions(kinds[index], group);
-                    }
-                })
+                .setItems(kinds, (dialog, index) ->
+                        showOptions(kinds[index], groups.get(kinds[index])))
                 .setNegativeButton(android.R.string.cancel, null).show();
     }
 
