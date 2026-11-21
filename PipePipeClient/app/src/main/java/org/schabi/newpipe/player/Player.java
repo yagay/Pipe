@@ -314,6 +314,10 @@ public final class Player implements
     @Nullable private SupjavHlsEngine supjavHlsEngine;
     private boolean supjavHlsPaused = true;
     private long supjavHlsDurationMs;
+    private long supjavHlsPositionMs;
+    private int supjavServerIndex = -1;
+    private float supjavHlsSpeed = 1f;
+    private boolean supjavQueueActive;
 
     private final Handler controlsVisibilityHandler = new Handler();
 
@@ -538,31 +542,75 @@ public final class Player implements
     //////////////////////////////////////////////////////////////////////////*/
     //region Setup and initialization
 
-    /** Use the existing Pipe player view and controls for browser-only Supjav HLS.
-     * No second Activity or player controls are constructed. */
-    public void startSupjavHls(final String selectedUrl) {
+    /**
+     * One Pipe player and queue, two media transports. Browser HLS renders
+     * directly into the original PlayerBinding; all visible controls and the
+     * existing queue drawer remain owned by this Player.
+     */
+    public void startSupjavHls(final String selectedUrl,
+                               @Nullable final PlayQueue requestedQueue,
+                               @Nullable final StreamInfo fallbackInfo) {
         if (binding == null) return;
         final int selected = org.schabi.newpipe.extractor.services.extended.supjav
                 .SupjavServerCatalog.selectedIndex(selectedUrl);
         if (selected < 0) return;
+
+        // Disconnect the previous engine and MediaSourceManager so neither
+        // can overwrite the browser play head or continue playing old audio.
         stopSupjavHls();
-        if (simpleExoPlayer != null) simpleExoPlayer.pause();
+        if (playQueueManager != null) {
+            playQueueManager.dispose();
+            playQueueManager = null;
+        }
+        if (simpleExoPlayer != null) {
+            simpleExoPlayer.stop();
+            simpleExoPlayer.clearMediaItems();
+        }
+        if (playQueueAdapter != null) {
+            playQueueAdapter.unsetSelectedListener();
+            playQueueAdapter.dispose();
+            playQueueAdapter = null;
+        }
+        if (playQueue != null && !playQueue.isDisposed()) {
+            playQueue.dispose();
+        }
+
+        final org.schabi.newpipe.player.playqueue.SupjavPlayQueue queue;
+        if (requestedQueue != null && !requestedQueue.isEmpty()) {
+            queue = new org.schabi.newpipe.player.playqueue.SupjavPlayQueue(requestedQueue);
+        } else if (fallbackInfo != null) {
+            queue = new org.schabi.newpipe.player.playqueue.SupjavPlayQueue(fallbackInfo);
+        } else {
+            DiagnosticLog.event("SUPJAV_ENGINE", "QUEUE_EMPTY", "no video to play");
+            return;
+        }
+        playQueue = queue;
+        supjavQueueActive = true;
+        supjavServerIndex = selected;
+        queue.init();
+        playQueueAdapter = new PlayQueueAdapter(context, queue);
+        currentItem = queue.getItem();
+        currentMetadata = null;
+        supjavHlsSpeed = 1f;
+        supjavHlsPositionMs = 0;
+        supjavHlsPaused = true;
+        supjavHlsDurationMs = 0;
+        currentState = STATE_BUFFERING;
+
         binding.getRoot().setVisibility(View.VISIBLE);
         binding.supjavHlsSurface.setVisibility(View.VISIBLE);
-        binding.playbackControlRoot.setVisibility(View.VISIBLE);
         binding.loadingPanelWrapper.setVisibility(View.VISIBLE);
-        binding.playerOverlays.setVisibility(View.GONE);
         binding.surfaceView.setVisibility(View.GONE);
         binding.playbackSeekBar.setMax(1000);
         binding.playbackSeekBar.setProgress(0);
         binding.playbackCurrentTime.setText("0:00");
         binding.playbackEndTime.setText("0:00");
-        binding.titleTextView.setText("Supjav");
+        binding.qualityTextView.setText("Auto");
         binding.qualityTextView.setVisibility(View.VISIBLE);
         binding.playbackSpeed.setVisibility(View.VISIBLE);
-        binding.playPreviousButton.setVisibility(View.INVISIBLE);
-        binding.playNextButton.setVisibility(View.INVISIBLE);
-        binding.queueButton.setVisibility(View.GONE);
+        binding.playbackSpeed.setText("1×");
+        binding.playPauseButton.setImageResource(R.drawable.ic_play_arrow);
+
         supjavHlsEngine = new SupjavHlsEngine(binding.supjavHlsSurface,
                 new SupjavHlsEngine.Listener() {
                     @Override public void onStatus(final String status) {
@@ -570,8 +618,14 @@ public final class Player implements
                     }
                     @Override public void onPosition(final long position,
                             final long duration, final boolean paused) {
+                        if (supjavHlsEngine == null) return;
+                        supjavHlsPositionMs = position;
                         supjavHlsDurationMs = duration;
-                        supjavHlsPaused = paused;
+                        if (supjavHlsPaused != paused) {
+                            supjavHlsPaused = paused;
+                            currentState = paused ? STATE_PAUSED : STATE_PLAYING;
+                            notifyPlaybackUpdateToListeners();
+                        }
                         binding.playPauseButton.setImageResource(
                                 paused ? R.drawable.ic_play_arrow : R.drawable.ic_pause);
                         binding.playbackSeekBar.setProgress(duration > 0
@@ -582,25 +636,93 @@ public final class Player implements
                         binding.playbackEndTime.setText(
                                 String.format(java.util.Locale.ROOT, "%d:%02d",
                                         duration / 60000, duration / 1000 % 60));
+                        notifyProgressUpdateToListeners((int) Math.min(Integer.MAX_VALUE, position),
+                                (int) Math.min(Integer.MAX_VALUE, duration), 0);
+                        if (isQueueVisible) {
+                            updateQueueTime(position);
+                        }
                     }
                     @Override public void onQuality(final String label) {
-                        binding.qualityTextView.setText(label);
+                        if (supjavHlsEngine != null) binding.qualityTextView.setText(label);
                     }
                     @Override public void onPlaying() {
+                        if (supjavHlsEngine == null) return;
                         supjavHlsPaused = false;
+                        currentState = STATE_PLAYING;
                         binding.loadingPanelWrapper.setVisibility(View.GONE);
                         binding.playbackControlRoot.setVisibility(View.VISIBLE);
+                        binding.playPauseButton.setImageResource(R.drawable.ic_pause);
+                        notifyPlaybackUpdateToListeners();
+                    }
+                    @Override public void onEnded() {
+                        if (supjavHlsEngine == null) return;
+                        supjavHlsPaused = true;
+                        if (getRepeatMode() == REPEAT_MODE_ONE) {
+                            seekTo(0);
+                            play();
+                        } else if (playQueue != null
+                                && (playQueue.getIndex() < playQueue.size() - 1
+                                || (getRepeatMode() == REPEAT_MODE_ALL && playQueue.size() > 1))) {
+                            advanceSupjavQueue(1);
+                        } else {
+                            currentState = STATE_COMPLETED;
+                            binding.playPauseButton.setImageResource(R.drawable.ic_replay);
+                            notifyPlaybackUpdateToListeners();
+                        }
                     }
                     @Override public void onFailure(final String reason) {
+                        if (supjavHlsEngine == null) return;
                         binding.loadingPanelWrapper.setVisibility(View.GONE);
+                        currentState = STATE_PAUSED;
+                        supjavHlsPaused = true;
+                        notifyPlaybackUpdateToListeners();
                         DiagnosticLog.event("SUPJAV_ENGINE", "UNAVAILABLE", "reason=" + reason);
                         android.widget.Toast.makeText(context,
                                 "This server cannot play in Pipe", android.widget.Toast.LENGTH_LONG)
                                 .show();
                     }
                 });
-        supjavHlsEngine.open(selectedUrl, selected);
-        DiagnosticLog.event("SUPJAV", "PLAYER_BINDING_START", "index=" + selected);
+        notifyQueueUpdateToListeners();
+        showOrHideButtons();
+        openSupjavQueueItem(selectedUrl);
+        DiagnosticLog.event("SUPJAV", "PLAYER_BINDING_START",
+                "index=" + selected + " queueSize=" + queue.size());
+    }
+
+    private void openSupjavQueueItem(final String requestedUrl) {
+        if (supjavHlsEngine == null || playQueue == null || playQueue.getItem() == null) return;
+        final String page = org.schabi.newpipe.extractor.services.extended.supjav
+                .SupjavServerCatalog.pageUrl(playQueue.getItem().getUrl());
+        if (page == null || !page.matches("https://(?:www\\.)?supjav\\.com/[0-9]+\\.html")) {
+            DiagnosticLog.event("SUPJAV_ENGINE", "QUEUE_UNSUPPORTED", "not a Supjav video");
+            return;
+        }
+        final String url = org.schabi.newpipe.extractor.services.extended.supjav
+                .SupjavServerCatalog.selectedUrl(page, supjavServerIndex);
+        currentItem = playQueue.getItem();
+        supjavHlsPositionMs = 0;
+        supjavHlsDurationMs = 0;
+        supjavHlsPaused = true;
+        currentState = STATE_BUFFERING;
+        binding.titleTextView.setText(currentItem.getTitle());
+        binding.playbackSeekBar.setProgress(0);
+        binding.playbackCurrentTime.setText("0:00");
+        binding.playbackEndTime.setText("0:00");
+        binding.loadingPanelWrapper.setVisibility(View.VISIBLE);
+        binding.playPauseButton.setImageResource(R.drawable.ic_play_arrow);
+        showOrHideButtons();
+        closeItemsList();
+        supjavHlsEngine.open(url, supjavServerIndex);
+    }
+
+    private void advanceSupjavQueue(final int delta) {
+        if (supjavHlsEngine == null || playQueue == null || playQueue.size() == 0) return;
+        final int next = playQueue.getIndex() + delta;
+        if (next < 0 || next >= playQueue.size()) {
+            if (getRepeatMode() != REPEAT_MODE_ALL) return;
+        }
+        playQueue.setIndex((next + playQueue.size()) % playQueue.size());
+        openSupjavQueueItem(playQueue.getItem().getUrl());
     }
 
     public boolean isSupjavHlsActive() {
@@ -611,8 +733,20 @@ public final class Player implements
         if (supjavHlsEngine == null) return;
         supjavHlsEngine.close();
         supjavHlsEngine = null;
+        supjavHlsPositionMs = 0;
         supjavHlsDurationMs = 0;
         supjavHlsPaused = true;
+        if (supjavQueueActive && playQueue != null) {
+            if (playQueueAdapter != null) {
+                playQueueAdapter.unsetSelectedListener();
+                playQueueAdapter.dispose();
+                playQueueAdapter = null;
+            }
+            playQueue.dispose();
+            playQueue = null;
+            currentItem = null;
+        }
+        supjavQueueActive = false;
         if (binding != null) {
             binding.supjavHlsSurface.setVisibility(View.GONE);
             binding.loadingPanelWrapper.setVisibility(View.GONE);
