@@ -27,6 +27,7 @@ import android.view.View;
 import android.widget.TextView;
 
 import org.schabi.newpipe.extractor.*;
+import org.schabi.newpipe.diagnostics.DiagnosticLog;
 import org.schabi.newpipe.extractor.exceptions.ExtractionException;
 import org.schabi.newpipe.extractor.linkhandler.SearchQueryHandler;
 import org.schabi.newpipe.extractor.search.filter.FilterItem;
@@ -321,7 +322,10 @@ public final class ExtractorHelper {
                                                          final Single<I> loadFromNetwork) {
         checkServiceId(serviceId);
         final Single<I> actualLoadFromNetwork = loadFromNetwork
-                .doOnSuccess(info -> CACHE.putInfo(serviceId, url, info, infoType));
+                .doOnSuccess(info -> CACHE.putInfo(serviceId, url, info, infoType))
+                .doOnError(error -> DiagnosticLog.error("EXTRACTOR",
+                        infoType.name() + "_FAILED", error,
+                        "serviceId=" + serviceId + " force=" + forceLoad));
 
         final Single<I> load;
         if (forceLoad) {
