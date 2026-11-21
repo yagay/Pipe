@@ -2771,27 +2771,10 @@ public final class Player implements
     }
 
     private void animatePlayButtons(final boolean show, final int duration) {
+        // Previous/next now belong to bottomControls. That entire toolbar
+        // follows the standard overlay visibility and should not be animated
+        // independently with the centered play/pause button.
         animate(binding.playPauseButton, show, duration, AnimationType.SCALE_AND_ALPHA);
-
-        boolean showQueueButtons = show;
-        if (playQueue == null) {
-            showQueueButtons = false;
-        }
-
-        if (!showQueueButtons || playQueue.getIndex() > 0) {
-            animate(
-                    binding.playPreviousButton,
-                    showQueueButtons,
-                    duration,
-                    AnimationType.SCALE_AND_ALPHA);
-        }
-        if (!showQueueButtons || playQueue.getIndex() + 1 < playQueue.getStreams().size()) {
-            animate(
-                    binding.playNextButton,
-                    showQueueButtons,
-                    duration,
-                    AnimationType.SCALE_AND_ALPHA);
-        }
     }
     //endregion
 
