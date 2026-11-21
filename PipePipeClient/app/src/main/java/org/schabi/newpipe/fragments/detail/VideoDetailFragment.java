@@ -215,6 +215,7 @@ public final class VideoDetailFragment
     int bottomSheetState = BottomSheetBehavior.STATE_EXPANDED;
     protected boolean autoPlayEnabled = true;
     private boolean supjavPlayAfterSelection = false;
+    private int supjavSwitchGeneration;
     @Nullable
     private String supjavSelectedPart;
     @Nullable
@@ -1611,63 +1612,167 @@ public final class VideoDetailFragment
         navigateToSupjavServer(detailUrl, selected, null);
     }
 
+    /**
+     * Unlike the old label-first switch, this follows the standalone Supjav
+     * playback sequence: resolve the target CD's actual media first, then
+     * commit the queue selection and replace the player source once.
+     */
     private void navigateToSupjavServer(final String detailUrl,
                                         final SupjavServerCatalog.Entry selected,
                                         @Nullable final String originalPart) {
-        DiagnosticLog.event("SUPJAV", "SERVER_SELECTED",
-                "part=" + selected.part + " server=" + selected.provider
-                        + " index=" + selected.index);
         final String target = SupjavServerCatalog.selectedUrl(detailUrl, selected.index);
-        // Use the exact CD selected in the dialog rather than state from an
-        // earlier video. A server-picker switch stays within that CD; a
-        // CD-picker switch must reset the timeline to the new disc.
+        final String sourcePage = SupjavServerCatalog.pageUrl(target);
         final String previousPart = originalPart != null
                 ? originalPart : supjavSelectedPart;
-        supjavSelectedPart = selected.part;
-        supjavSelectedPartPage = SupjavServerCatalog.pageUrl(detailUrl);
-        if (target.equals(url) && currentInfo != null
+        final boolean changingDisc = previousPart != null
+                && !previousPart.equals(selected.part);
+        final int generation = ++supjavSwitchGeneration;
+        DiagnosticLog.event("SUPJAV", "SWITCH_RESOLVE_BEGIN",
+                "part=" + selected.part + " server=" + selected.provider
+                        + " index=" + selected.index
+                        + " token=" + supjavShortHash(selected.link)
+                        + " discChanged=" + changingDisc);
+
+        if (target.equals(activeSupjavUrl()) && currentInfo != null
                 && !currentInfo.getVideoStreams().isEmpty()) {
             openVideoPlayerAutoFullscreen();
             return;
         }
-        final String previousUrl = activeSupjavUrl();
-        final PlayQueue retainedQueue = playQueue != null && playQueue.getItem() != null
-                && playQueue.getItem().getServiceId() == ServiceList.Supjav.getServiceId()
-                && SupjavServerCatalog.pageUrl(playQueue.getItem().getUrl())
-                        .equals(SupjavServerCatalog.pageUrl(target))
-                ? playQueue : null;
-        if (retainedQueue != null) {
-            // Keep the *same* browsed page queue and its pagination cursor.
-            // Only the current item's media source changes.
-            retainedQueue.getItem().setSupjavSelectedSource(target);
+
+        // Never change the displayed CD while resolution is still pending.
+        // If a second selection arrives, ignore any late result from this one.
+        disposables.add(ExtractorHelper.getStreamInfo(
+                        ServiceList.Supjav.getServiceId(), target, false)
+                .subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(resolved -> {
+                    if (!isAdded() || generation != supjavSwitchGeneration
+                            || serviceId != ServiceList.Supjav.getServiceId()
+                            || !sourcePage.equals(SupjavServerCatalog.pageUrl(activeSupjavUrl()))) {
+                        return;
+                    }
+                    if (resolved.getVideoStreams().isEmpty()) {
+                        DiagnosticLog.event("SUPJAV", "SWITCH_REJECTED_EMPTY",
+                                "part=" + selected.part + " index=" + selected.index);
+                        Toast.makeText(requireContext(),
+                                "Selected CD has no video source", Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    final VideoStream replacementStream = resolved.getVideoStreams().get(0);
+                    final String expected = "SUPJAV|" + selected.part + "|"
+                            + selected.provider + "|";
+                    if (replacementStream.getId() == null
+                            || !replacementStream.getId().startsWith(expected)
+                            || SupjavServerCatalog.selectedIndex(resolved.getUrl())
+                                    != selected.index) {
+                        DiagnosticLog.event("SUPJAV", "SWITCH_REJECTED_MISMATCH",
+                                "part=" + selected.part + " index=" + selected.index);
+                        Toast.makeText(requireContext(),
+                                "CD source did not match the selected server",
+                                Toast.LENGTH_LONG).show();
+                        return;
+                    }
+
+                    final VideoStream previousStream = player != null
+                            ? player.getSelectedVideoStream() : null;
+                    final String nextMedia = supjavMediaIdentity(replacementStream);
+                    final String oldMedia = supjavMediaIdentity(previousStream);
+                    DiagnosticLog.event("SUPJAV", "SWITCH_MEDIA_CONFIRMED",
+                            "part=" + selected.part + " server=" + selected.provider
+                                    + " index=" + selected.index
+                                    + " oldMedia=" + supjavShortHash(oldMedia)
+                                    + " newMedia=" + supjavShortHash(nextMedia)
+                                    + " sameMedia=" + (!oldMedia.isEmpty()
+                                            && oldMedia.equals(nextMedia)));
+
+                    if (changingDisc && !oldMedia.isEmpty()
+                            && oldMedia.equals(nextMedia)) {
+                        // Some provider endpoints return the exact same media
+                        // for two different server tokens. Never pretend that
+                        // the second CD actually started in that case.
+                        DiagnosticLog.event("SUPJAV", "SWITCH_REJECTED_SAME_MEDIA",
+                                "part=" + selected.part
+                                        + " index=" + selected.index);
+                        Toast.makeText(requireContext(),
+                                "This CD server returned the same video. "
+                                        + "Choose another server in the selected CD.",
+                                Toast.LENGTH_LONG).show();
+                        return;
+                    }
+
+                    final PlayQueue retained = playQueue != null
+                            && playQueue.getItem() != null
+                            && playQueue.getItem().getServiceId()
+                                    == ServiceList.Supjav.getServiceId()
+                            && sourcePage.equals(SupjavServerCatalog.pageUrl(
+                                    playQueue.getItem().getUrl()))
+                            ? playQueue : null;
+                    if (retained != null) {
+                        retained.getItem().setSupjavSelectedSource(target, resolved);
+                    }
+
+                    // All identities now refer to the *resolved* CD. A
+                    // previously selected CD is not shown as successfully
+                    // switched until the actual stream has been resolved.
+                    supjavSelectedPart = selected.part;
+                    supjavSelectedPartPage = sourcePage;
+                    if (retained != null && player != null
+                            && player.getPlayQueue() == retained
+                            && isPlayerAvailable()) {
+                        supjavPlayAfterSelection = false;
+                        currentInfo = resolved;
+                        setInitialData(ServiceList.Supjav.getServiceId(), target,
+                                resolved.getName(), retained);
+                        DiagnosticLog.event("SUPJAV", "SWITCH_MEDIA_COMMIT",
+                                "part=" + selected.part
+                                        + " index=" + selected.index
+                                        + " queueSize=" + retained.size());
+                        // The manager consumes the exact prefetched info and
+                        // replaces its Media3 media source once.
+                        player.reloadCurrentSupjavQueueSource(changingDisc);
+                    } else {
+                        supjavPlayAfterSelection = true;
+                        setAutoPlay(true);
+                        DiagnosticLog.event("SUPJAV", "SWITCH_MEDIA_OPEN",
+                                "part=" + selected.part + " index=" + selected.index);
+                        selectAndLoadVideo(ServiceList.Supjav.getServiceId(), target,
+                                resolved.getName(), retained);
+                    }
+                }, error -> {
+                    if (isAdded() && generation == supjavSwitchGeneration) {
+                        DiagnosticLog.error("SUPJAV", "SWITCH_RESOLVE_FAILED",
+                                error, "part=" + selected.part
+                                        + " server=" + selected.provider
+                                        + " index=" + selected.index);
+                        Toast.makeText(requireContext(),
+                                "CD playback source could not be loaded",
+                                Toast.LENGTH_LONG).show();
+                    }
+                }));
+    }
+
+    /** Hash only: diagnostic ZIP must never expose signed CDN/media URLs. */
+    private static String supjavShortHash(@Nullable final String input) {
+        if (input == null || input.isEmpty()) return "none";
+        try {
+            final byte[] bytes = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(input.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            final StringBuilder result = new StringBuilder(16);
+            for (int i = 0; i < 8; i++) {
+                result.append(String.format(java.util.Locale.ROOT, "%02x",
+                        bytes[i] & 0xff));
+            }
+            return result.toString();
+        } catch (final java.security.NoSuchAlgorithmException ignored) {
+            return "unavailable";
         }
-        if (retainedQueue != null && player != null
-                && player.getPlayQueue() == retainedQueue && isPlayerAvailable()) {
-            // Do not call selectAndLoadVideo() here: it would start a second
-            // StreamInfo request and a second playback initialization while
-            // the queue manager is already reloading this selected source.
-            final boolean changingDisc = previousUrl != null
-                && !selected.part.equals(previousPart);
-            DiagnosticLog.event("SUPJAV", "SWITCH_QUEUE_IN_PLACE",
-                    "part=" + selected.part + " server=" + selected.provider
-                            + " index=" + selected.index
-                            + " resetPosition=" + changingDisc
-                            + " queueSize=" + retainedQueue.size());
-            supjavPlayAfterSelection = false;
-            setInitialData(ServiceList.Supjav.getServiceId(), target,
-                    currentInfo == null ? title : currentInfo.getName(), retainedQueue);
-            player.reloadCurrentSupjavQueueSource(changingDisc);
-            return;
-        }
-        // No active player: do the ordinary one-time detail resolution.
-        // It will start the retained queue only once after the source is ready.
-        DiagnosticLog.event("SUPJAV", "SWITCH_OPEN_SOURCE",
-                "part=" + selected.part + " server=" + selected.provider
-                        + " index=" + selected.index);
-        supjavPlayAfterSelection = true;
-        setAutoPlay(true);
-        selectAndLoadVideo(ServiceList.Supjav.getServiceId(), target,
-                currentInfo == null ? title : currentInfo.getName(), retainedQueue);
+    }
+
+    private static String supjavMediaIdentity(@Nullable final VideoStream stream) {
+        if (stream == null || stream.getContent() == null) return "";
+        final String content = stream.getContent();
+        final int metadata = content.indexOf("#supjav=1&ref=");
+        return metadata > 0 ? content.substring(0, metadata) : content;
     }
 
     private void showSupjavCdPicker() {

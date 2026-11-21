@@ -48,7 +48,11 @@ public class PlayQueueItem implements Serializable {
      * not a reason to discard the page's queue or its pagination cursor.
      */
     @Nullable
-    private String supjavSelectedSource;
+    private volatile String supjavSelectedSource;
+    @Nullable
+    private transient volatile String supjavPrefetchedSource;
+    @Nullable
+    private transient volatile StreamInfo supjavPrefetchedInfo;
 
     PlayQueueItem(@NonNull final StreamInfo info) {
         this(info.getName(), info.getUrl(), info.getServiceId(), info.getDuration(),
@@ -149,11 +153,40 @@ public class PlayQueueItem implements Serializable {
             throw new IllegalArgumentException("Supjav server does not belong to queue item");
         }
         supjavSelectedSource = selectedSource;
+        supjavPrefetchedSource = null;
+        supjavPrefetchedInfo = null;
+    }
+
+    /**
+     * Commit one resolved CD only after a real video stream has been found.
+     * The media-source manager must use this exact source, rather than
+     * re-fetching independently and potentially showing stale queue media.
+     */
+    public synchronized void setSupjavSelectedSource(
+            @NonNull final String selectedSource, @NonNull final StreamInfo info) {
+        if (info.getServiceId() != serviceId
+                || SupjavServerCatalog.selectedIndex(info.getUrl())
+                        != SupjavServerCatalog.selectedIndex(selectedSource)
+                || !SupjavServerCatalog.pageUrl(info.getUrl())
+                        .equals(SupjavServerCatalog.pageUrl(url))
+                || info.getVideoStreams().isEmpty()) {
+            throw new IllegalArgumentException("Supjav resolved source does not match CD");
+        }
+        setSupjavSelectedSource(selectedSource);
+        supjavPrefetchedSource = selectedSource;
+        supjavPrefetchedInfo = info;
     }
 
     @Nullable
     String getSupjavSelectedSource() {
         return supjavSelectedSource;
+    }
+
+    @Nullable
+    synchronized StreamInfo getSupjavPrefetchedInfo() {
+        return supjavPrefetchedSource != null
+                && supjavPrefetchedSource.equals(supjavSelectedSource)
+                ? supjavPrefetchedInfo : null;
     }
 
     @NonNull

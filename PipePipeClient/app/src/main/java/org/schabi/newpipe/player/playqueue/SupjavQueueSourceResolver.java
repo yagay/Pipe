@@ -23,6 +23,12 @@ final class SupjavQueueSourceResolver {
 
     @NonNull
     static Single<StreamInfo> load(@NonNull final PlayQueueItem item) {
+        final StreamInfo confirmed = item.getSupjavPrefetchedInfo();
+        if (confirmed != null) {
+            // The selected CD was already resolved and verified by the picker.
+            // Do not return to the old CD through an asynchronous second fetch.
+            return Single.just(confirmed);
+        }
         return Single.fromCallable(() -> {
             final String chosen = item.getSupjavSelectedSource();
             if (chosen != null) return chosen;
