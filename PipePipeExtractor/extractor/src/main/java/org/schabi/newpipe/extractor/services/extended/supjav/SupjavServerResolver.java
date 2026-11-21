@@ -24,7 +24,8 @@ final class SupjavServerResolver {
     private static final int MAX_LINES = 12;
     private SupjavServerResolver() { }
 
-    static List<VideoStream> resolve(final Document detail, final String detailUrl) {
+    static List<VideoStream> resolve(final Document detail, final String detailUrl)
+            throws org.schabi.newpipe.extractor.exceptions.ParsingException {
         final Map<String, VideoStream> found = new LinkedHashMap<>();
         // Only selected player documents are trusted as media sources. The detail
         // page may contain preview/advertisement media that cannot be played.
@@ -121,7 +122,32 @@ final class SupjavServerResolver {
                 // A broken provider must not hide the other player choices.
             }
         }
-        return new ArrayList<>(found.values());
+        // Probe only a bounded number of sources so opening a detail page
+        // never probes every mirror or every CD. Preserve unprobed sources for
+        // explicit selection; exclude only confirmed unusable media.
+        final List<VideoStream> verified = new ArrayList<>();
+        final List<VideoStream> remaining = new ArrayList<>();
+        int checked = 0;
+        int blocked = 0;
+        for (final VideoStream stream : found.values()) {
+            final SupjavMediaProbe.Status status = checked++ < 8
+                    ? SupjavMediaProbe.probe(stream) : SupjavMediaProbe.Status.UNKNOWN;
+            if (status == SupjavMediaProbe.Status.PLAYABLE) {
+                verified.add(stream);
+            } else if (status == SupjavMediaProbe.Status.BLOCKED) {
+                blocked++;
+            } else {
+                remaining.add(stream);
+            }
+        }
+        if (verified.isEmpty() && remaining.isEmpty() && blocked > 0) {
+            // Explicit failure instead of sending a known 403/HTML source to ExoPlayer.
+            throw new org.schabi.newpipe.extractor.exceptions.ParsingException(
+                    "Supjav media access denied or media URL expired; "
+                    + "the selected server may require browser verification");
+        }
+        verified.addAll(remaining);
+        return verified;
     }
 
     private static String serverName(final Element item) {
