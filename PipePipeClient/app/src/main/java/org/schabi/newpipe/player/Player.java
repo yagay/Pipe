@@ -658,7 +658,8 @@ public final class Player implements
                         if (supjavHlsEngine == null) return;
                         supjavHlsPositionMs = position;
                         supjavHlsDurationMs = duration;
-                        if (duration > 0 && supjavRestorePositionMs > 0) {
+                        if (supjavHlsEngine.isReady()
+                                && duration > 0 && supjavRestorePositionMs > 0) {
                             final long resumeAt = supjavRestorePositionMs;
                             supjavRestorePositionMs = -1;
                             supjavHlsEngine.command("seekFraction("
@@ -697,6 +698,15 @@ public final class Player implements
                     }
                     @Override public void onReady() {
                         if (supjavHlsEngine == null) return;
+                        supjavHlsEngine.command("speed(" + supjavHlsSpeed + ")");
+                        // Metadata can arrive long before decoded data. Defer
+                        // resume seeks until the HLS command bridge is ready.
+                        if (supjavRestorePositionMs > 0 && supjavHlsDurationMs > 0) {
+                            final double fraction = Math.min(1d,
+                                    supjavRestorePositionMs / (double) supjavHlsDurationMs);
+                            supjavRestorePositionMs = -1;
+                            supjavHlsEngine.command("seekFraction(" + fraction + ")");
+                        }
                         binding.loadingPanelWrapper.setVisibility(View.GONE);
                         binding.playbackControlRoot.setVisibility(View.VISIBLE);
                         currentState = STATE_PAUSED;
@@ -805,6 +815,8 @@ public final class Player implements
         binding.playbackSeekBar.setProgress(0);
         binding.playbackCurrentTime.setText("0:00");
         binding.playbackEndTime.setText("0:00");
+        supjavQualityLevels.clear();
+        binding.qualityTextView.setText("最高");
         binding.loadingPanelWrapper.setVisibility(View.VISIBLE);
         binding.playPauseButton.setImageResource(R.drawable.ic_play_arrow);
         loadSupjavSourceControls(page);
