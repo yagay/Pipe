@@ -201,8 +201,10 @@ final class MissAvBrowseHeader {
             final String name = MissAvBrowseCatalog.GROUPS[index][0];
             final TextView heading = textButton(name
                     + (expandedGroup == index ? " ▴" : " ▾"));
-            heading.setTypeface(null, expandedGroup == index
+            final boolean selected = selectedGroupIndex() == index;
+            heading.setTypeface(null, (expandedGroup == index || selected)
                     ? Typeface.BOLD : Typeface.NORMAL);
+            heading.setSelected(selected);
             headings[index] = heading;
             channels.addView(heading);
             heading.setOnClickListener(view -> {
@@ -294,7 +296,8 @@ final class MissAvBrowseHeader {
             final TextView retry = textButton("Retry options");
             retry.setOnClickListener(v -> reloadPageOptions(true));
             toolbar.addView(retry);
-        }    }
+        }
+    }
 
     private String activeLabel(final String prefix, final List<MissAvBrowseCatalog.Entry> items) {
         for (final MissAvBrowseCatalog.Entry entry : items) {
