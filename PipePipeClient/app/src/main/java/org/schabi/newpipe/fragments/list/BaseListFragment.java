@@ -35,6 +35,7 @@ import org.schabi.newpipe.fragments.OnScrollBelowItemsListener;
 import org.schabi.newpipe.info_list.ItemViewMode;
 import org.schabi.newpipe.info_list.dialog.InfoItemDialog;
 import org.schabi.newpipe.info_list.InfoListAdapter;
+import org.schabi.newpipe.player.playqueue.SinglePlayQueue;
 import org.schabi.newpipe.util.NavigationHelper;
 import org.schabi.newpipe.util.OnClickGesture;
 import org.schabi.newpipe.util.StateSaver;
@@ -42,7 +43,10 @@ import org.schabi.newpipe.util.ThemeHelper;
 import org.schabi.newpipe.views.SuperScrollLayoutManager;
 
 import javax.annotation.Nonnull;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
 import java.util.function.Supplier;
 
@@ -451,9 +455,34 @@ public abstract class BaseListFragment<I, N> extends BaseStateFragment<I>
 
     private void onStreamSelected(final StreamInfoItem selectedItem) {
         onItemSelected(selectedItem);
+
+        // Use the current list page as the playback queue. This includes already
+        // loaded pagination results, while retaining the site's displayed order.
+        // Do not mix unrelated service results or duplicate the same video.
+        final Map<String, StreamInfoItem> pageItems = new LinkedHashMap<>();
+        if (infoListAdapter != null) {
+            for (final InfoItem item : infoListAdapter.getItemsList()) {
+                if (item instanceof StreamInfoItem
+                        && item.getServiceId() == selectedItem.getServiceId()) {
+                    final StreamInfoItem stream = (StreamInfoItem) item;
+                    pageItems.putIfAbsent(stream.getUrl(), stream);
+                }
+            }
+        }
+        // A clicked item can race with a refresh; it must always be in the queue.
+        pageItems.putIfAbsent(selectedItem.getUrl(), selectedItem);
+        final List<StreamInfoItem> streams = new ArrayList<>(pageItems.values());
+        int selectedIndex = 0;
+        for (int i = 0; i < streams.size(); i++) {
+            if (streams.get(i).getUrl().equals(selectedItem.getUrl())) {
+                selectedIndex = i;
+                break;
+            }
+        }
+
         NavigationHelper.openVideoDetailFragment(requireContext(), getFM(),
                 selectedItem.getServiceId(), selectedItem.getUrl(), selectedItem.getName(),
-                null, false);
+                new SinglePlayQueue(streams, selectedIndex), false);
     }
 
     protected void onScrollToBottom() {
