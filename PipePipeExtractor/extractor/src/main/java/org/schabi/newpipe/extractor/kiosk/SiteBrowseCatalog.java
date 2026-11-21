@@ -95,8 +95,8 @@ public final class SiteBrowseCatalog {
     private static final Map<Integer, CategoryCache> CATEGORY_CACHE = new HashMap<>();
     private static final Set<String> HTML_SITES = new HashSet<>(java.util.Arrays.asList(
             "KissJAV", "85po", "Pornhub", "JAV-NONI", "JAVSB", "TOKYO Motion",
-            "SpankBang", "xHamster", "XVideos", "Eporner", "MRDOUGA",
-            "OHentai", "XNXX", "141tube", "Avgle.net", "Hanime1", "JavFun"));
+            "SpankBang", "xHamster", "XVideos", "EPORNER", "MRDOUGA",
+            "OHentai", "XNXX", "141tube", "Avgle.net", "Hanime1.me", "JAV-FUN.cc"));
 
     private static final class CategoryCache {
         final List<Entry> entries;
