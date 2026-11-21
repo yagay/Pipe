@@ -480,6 +480,31 @@ public final class Player implements
         return new QualityResolver() {
             @Override
             public int getDefaultResolutionIndex(final List<VideoStream> sortedVideos) {
+                // MissAV advertises its CDN renditions as individual HLS
+                // streams. Start at the highest confirmed resolution; the
+                // existing quality popup still allows a manual switch.
+                int bestIndex = -1;
+                int bestHeight = -1;
+                for (int i = 0; i < sortedVideos.size(); i++) {
+                    final VideoStream stream = sortedVideos.get(i);
+                    final String manifest = stream.getManifestUrl();
+                    if (manifest == null || !manifest.endsWith("#missav=1")) {
+                        continue;
+                    }
+                    final java.util.regex.Matcher height =
+                            java.util.regex.Pattern.compile("^(\\d+)p$")
+                                    .matcher(stream.getResolution());
+                    if (height.matches()) {
+                        final int pixels = Integer.parseInt(height.group(1));
+                        if (pixels > bestHeight) {
+                            bestHeight = pixels;
+                            bestIndex = i;
+                        }
+                    }
+                }
+                if (bestIndex != -1) {
+                    return bestIndex;
+                }
                 return videoPlayerSelected()
                         ? ListHelper.getDefaultResolutionIndex(context, sortedVideos)
                         : ListHelper.getPopupDefaultResolutionIndex(context, sortedVideos);
