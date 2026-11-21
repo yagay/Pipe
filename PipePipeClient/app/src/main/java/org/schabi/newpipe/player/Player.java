@@ -596,6 +596,8 @@ public final class Player implements
         supjavHlsPaused = true;
         supjavHlsDurationMs = 0;
         currentState = STATE_BUFFERING;
+        playerType = PlayerType.VIDEO;
+        isAudioOnly = false;
 
         binding.getRoot().setVisibility(View.VISIBLE);
         binding.supjavHlsSurface.setVisibility(View.VISIBLE);
@@ -639,7 +641,7 @@ public final class Player implements
                         notifyProgressUpdateToListeners((int) Math.min(Integer.MAX_VALUE, position),
                                 (int) Math.min(Integer.MAX_VALUE, duration), 0);
                         if (isQueueVisible) {
-                            updateQueueTime(position);
+                            updateQueueTime((int) Math.min(Integer.MAX_VALUE, position));
                         }
                     }
                     @Override public void onQuality(final String label) {
@@ -863,7 +865,9 @@ public final class Player implements
             }
             menu.setOnMenuItemClickListener(item -> {
                 final float value = speeds[item.getItemId()];
+                supjavHlsSpeed = value;
                 supjavHlsEngine.command("speed(" + value + ")");
+                notifyPlaybackUpdateToListeners();
                 binding.playbackSpeed.setText(String.format(java.util.Locale.ROOT,
                         "%s×", value));
                 return true;
@@ -2053,6 +2057,7 @@ public final class Player implements
     }
 
     public PlaybackParameters getPlaybackParameters() {
+        if (supjavHlsEngine != null) return new PlaybackParameters(supjavHlsSpeed);
         if (exoPlayerIsNull()) {
             return PlaybackParameters.DEFAULT;
         }
@@ -2069,6 +2074,12 @@ public final class Player implements
      */
     public void setPlaybackParameters(final float speed, final float pitch,
                                       final boolean skipSilence) {
+        if (supjavHlsEngine != null) {
+            supjavHlsSpeed = Math.max(0.25f, Math.min(4f, speed));
+            supjavHlsEngine.command("speed(" + supjavHlsSpeed + ")");
+            notifyPlaybackUpdateToListeners();
+            return;
+        }
         final float roundedSpeed = Math.round(speed * 100.0f) / 100.0f;
         final float roundedPitch = Math.round(pitch * 100.0f) / 100.0f;
 
@@ -2588,6 +2599,7 @@ public final class Player implements
     //region Playback states
     @Override
     public void onPlayWhenReadyChanged(final boolean playWhenReady, final int reason) {
+        if (supjavHlsEngine != null) return;
         if (DEBUG) {
             Log.d(TAG, "ExoPlayer - onPlayWhenReadyChanged() called with: "
                     + "playWhenReady = [" + playWhenReady + "], "
@@ -2601,6 +2613,7 @@ public final class Player implements
 
     @Override
     public void onPlaybackStateChanged(final int playbackState) {
+        if (supjavHlsEngine != null) return;
         if (DEBUG) {
             Log.d(TAG, "ExoPlayer - onPlaybackStateChanged() called with: "
                     + "playbackState = [" + playbackState + "]");
@@ -3878,6 +3891,16 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
     }
 
     public void playPrevious() {
+        if (supjavHlsEngine != null) {
+            if (supjavHlsPositionMs > PLAY_PREV_ACTIVATION_LIMIT_MILLIS
+                    || playQueue == null || playQueue.getIndex() == 0) {
+                seekTo(0);
+                play();
+            } else {
+                advanceSupjavQueue(-1);
+            }
+            return;
+        }
         if (DEBUG) {
             Log.d(TAG, "onPlayPrevious() called");
         }
@@ -3900,6 +3923,10 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
     }
 
     public void playNext() {
+        if (supjavHlsEngine != null) {
+            advanceSupjavQueue(1);
+            return;
+        }
         if (DEBUG) {
             Log.d(TAG, "onPlayNext() called");
         }
@@ -4151,7 +4178,22 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
     }
 
     public void selectQueueItem(final PlayQueueItem item) {
-        if (playQueue == null || exoPlayerIsNull()) {
+        if (playQueue == null) {
+            return;
+        }
+        if (supjavHlsEngine != null) {
+            final int selected = playQueue.indexOf(item);
+            if (selected < 0) return;
+            if (selected == playQueue.getIndex()) {
+                seekTo(0);
+                play();
+            } else {
+                playQueue.setIndex(selected);
+                openSupjavQueueItem(item.getUrl());
+            }
+            return;
+        }
+        if (exoPlayerIsNull()) {
             return;
         }
 
@@ -4172,7 +4214,9 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
     public void onPlayQueueEdited() {
         notifyPlaybackUpdateToListeners();
         showOrHideButtons();
-        NotificationUtil.getInstance().createNotificationIfNeededAndUpdate(this, false);
+        if (supjavHlsEngine == null) {
+            NotificationUtil.getInstance().createNotificationIfNeededAndUpdate(this, false);
+        }
     }
 
     /**
@@ -4226,7 +4270,9 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
             playQueue.fetch();
         }
 
-        updateQueueTime((int) simpleExoPlayer.getCurrentPosition());
+        updateQueueTime(supjavHlsEngine != null
+                ? (int) Math.min(Integer.MAX_VALUE, supjavHlsPositionMs)
+                : (int) simpleExoPlayer.getCurrentPosition());
     }
 
     private void buildQueue() {
@@ -5547,6 +5593,11 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
      * next lines of code will enable audio-only playback only if needed
      */
     private void onFragmentStopped() {
+        if (supjavHlsEngine != null) {
+            // Browser video cannot be reconfigured by Media3 track-selection.
+            pause();
+            return;
+        }
         if (videoPlayerSelected() && (isPlaying() || isLoading())) {
             switch (getMinimizeOnExitAction(context)) {
                 case MINIMIZE_ON_EXIT_MODE_BACKGROUND:
@@ -5584,6 +5635,18 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
     }
 
     private void notifyPlaybackUpdateToListeners() {
+        if (supjavHlsEngine != null && playQueue != null) {
+            final PlaybackParameters params = new PlaybackParameters(supjavHlsSpeed);
+            if (fragmentListener != null) {
+                fragmentListener.onPlaybackUpdate(currentState, getRepeatMode(),
+                        playQueue.isShuffled(), params);
+            }
+            if (activityListener != null) {
+                activityListener.onPlaybackUpdate(currentState, getRepeatMode(),
+                        playQueue.isShuffled(), params);
+            }
+            return;
+        }
         if (fragmentListener != null && !exoPlayerIsNull() && playQueue != null) {
             fragmentListener.onPlaybackUpdate(currentState, getRepeatMode(),
                     playQueue.isShuffled(), simpleExoPlayer.getPlaybackParameters());
@@ -5756,14 +5819,17 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
     }
 
     public boolean isStopped() {
+        if (supjavHlsEngine != null) return false;
         return exoPlayerIsNull() || simpleExoPlayer.getPlaybackState() == ExoPlayer.STATE_IDLE;
     }
 
     public boolean isPlaying() {
+        if (supjavHlsEngine != null) return supjavHlsEngine.isReady() && !supjavHlsPaused;
         return !exoPlayerIsNull() && simpleExoPlayer.isPlaying();
     }
 
     public boolean getPlayWhenReady() {
+        if (supjavHlsEngine != null) return !supjavHlsPaused;
         return !exoPlayerIsNull() && simpleExoPlayer.getPlayWhenReady();
     }
 
