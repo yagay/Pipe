@@ -192,7 +192,9 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
             @Override
             public void onPageFinished(final WebView view, final String loadedUrl) {
                 super.onPageFinished(view, loadedUrl);
-                if (selectionStarted || selectedServer < 0 || !url.equals(loadedUrl)) {
+                if (selectionStarted || selectedServer < 0
+                        || !SupjavServerCatalog.pageUrl(
+                                getIntent().getStringExtra(EXTRA_PAGE)).equals(loadedUrl)) {
                     return;
                 }
                 selectionStarted = true;
