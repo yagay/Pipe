@@ -66,6 +66,13 @@ public class MediaSessionManager {
     private PlaybackStateCompat.CustomAction errorAction;
 
     private org.schabi.newpipe.player.Player player;
+    // The Android MediaSession is shared. The active engine supplies its own
+    // timeline while browser HLS runs; no second media session is created.
+    private boolean browserPlayback;
+    private int browserPlaybackState = PlaybackStateCompat.STATE_BUFFERING;
+    private long browserPositionMs;
+    private long browserDurationMs = -1;
+    private float browserSpeed = 1f;
 
     public MediaSessionManager(@NonNull final Context context,
                                @NonNull final Player player,
@@ -101,6 +108,7 @@ public class MediaSessionManager {
     private final Player.Listener playerListener = new Player.Listener() {
         @Override
         public void onEvents(@NonNull final Player p, @NonNull final Player.Events events) {
+            if (browserPlayback) return;
             if (events.containsAny(
                     Player.EVENT_PLAYBACK_STATE_CHANGED,
                     Player.EVENT_PLAY_WHEN_READY_CHANGED,
@@ -201,13 +209,45 @@ public class MediaSessionManager {
         }
     };
 
+    public void setBrowserPlayback(final boolean enabled) {
+        browserPlayback = enabled;
+        browserPositionMs = 0;
+        browserDurationMs = -1;
+        browserSpeed = 1f;
+        browserPlaybackState = PlaybackStateCompat.STATE_BUFFERING;
+        updateMetadata();
+        if (enabled) publishQueue();
+        updatePlaybackState();
+    }
+
+    public void updateBrowserPlayback(final int state, final long positionMs,
+                                      final long durationMs, final float speed) {
+        if (!browserPlayback) return;
+        browserPlaybackState = state;
+        browserPositionMs = Math.max(0L, positionMs);
+        final long correctedDuration = durationMs > 0 ? durationMs : -1L;
+        if (correctedDuration != browserDurationMs) {
+            browserDurationMs = correctedDuration;
+            updateMetadata();
+        }
+        browserSpeed = Math.max(.25f, speed);
+        updatePlaybackState();
+    }
+
+    public void refreshBrowserQueue() {
+        if (!browserPlayback) return;
+        updateMetadata();
+        publishQueue();
+    }
+
     private void updatePlaybackState() {
         final PlaybackStateCompat.Builder builder = new PlaybackStateCompat.Builder()
                 .setActions(PLAYBACK_ACTIONS
                         | (playbackPreparer != null
                         ? playbackPreparer.getSupportedPrepareActions() : 0))
-                .setState(toPlaybackStateCompat(), exoPlayer.getCurrentPosition(),
-                        exoPlayer.getPlaybackParameters().speed);
+                .setState(browserPlayback ? browserPlaybackState : toPlaybackStateCompat(),
+                        browserPlayback ? browserPositionMs : exoPlayer.getCurrentPosition(),
+                        browserPlayback ? browserSpeed : exoPlayer.getPlaybackParameters().speed);
         builder.addCustomAction(changePlayModeAction());
         builder.addCustomAction(new PlaybackStateCompat.CustomAction.Builder(
                 ACTION_CLOSE, "Close", R.drawable.ic_close).build());
@@ -324,7 +364,8 @@ public class MediaSessionManager {
                 .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, player.getUploaderName());
 
         // set duration (-1 for livestreams or if unknown, see the METADATA_KEY_DURATION docs)
-        final long duration = player.getCurrentStreamInfo()
+        final long duration = browserPlayback ? browserDurationMs
+                : player.getCurrentStreamInfo()
                 .filter(info -> !StreamTypeUtil.isLiveStream(info.getStreamType()))
                 .map(info -> info.getDuration() * 1000L)
                 .orElse(-1L);
