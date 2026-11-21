@@ -42,10 +42,43 @@ public final class BrowseUrlState {
                     && a.getScheme().equalsIgnoreCase(b.getScheme())
                     && a.getHost() != null && b.getHost() != null
                     && a.getHost().equalsIgnoreCase(b.getHost())
+                    && a.getPort() == b.getPort()
                     && java.util.Objects.equals(a.getRawPath(), b.getRawPath());
         } catch (final URISyntaxException ignored) {
             return false;
         }
+    }
+
+    /**
+     * Compare category identity while ignoring sort, filter and page parameters.
+     * Query-based categories (for example /video?c=3) must remain distinct.
+     */
+    public static boolean sameCategory(final String current, final String candidate) {
+        if (!samePath(current, candidate)) {
+            return false;
+        }
+        try {
+            final List<String> a = categoryParts(new URI(current).getRawQuery());
+            final List<String> b = categoryParts(new URI(candidate).getRawQuery());
+            Collections.sort(a);
+            Collections.sort(b);
+            return a.equals(b);
+        } catch (final URISyntaxException ignored) {
+            return false;
+        }
+    }
+
+    private static List<String> categoryParts(final String query) {
+        final List<String> result = new ArrayList<>();
+        for (final String part : parts(query)) {
+            final String name = key(part).toLowerCase(Locale.ROOT);
+            if (!OptionGroup.FILTER.contains(name) && !OptionGroup.SORT.contains(name)
+                    && !name.equals("page") && !name.equals("p")
+                    && !name.equals("from")) {
+                result.add(part);
+            }
+        }
+        return result;
     }
 
     public static boolean hasOption(final String url, final OptionGroup group) {
