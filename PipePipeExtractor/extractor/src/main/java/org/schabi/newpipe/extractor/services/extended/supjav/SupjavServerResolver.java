@@ -26,7 +26,7 @@ final class SupjavServerResolver {
 
     static List<VideoStream> resolve(final Document detail, final String detailUrl) {
         final Map<String, VideoStream> found = new LinkedHashMap<>();
-        addMedia(found, detail, "Direct");
+        addMedia(found, detail, "Main|Direct");
         final java.util.List<Element> entries = detail.select(
                 ".btn-server[data-link], .btnst a[data-link], .btns a[data-link], "
                 + "#server-list [data-link], .server-list [data-link], "
@@ -73,7 +73,7 @@ final class SupjavServerResolver {
             final String link = resolveDeclaredUrl(raw, detailUrl);
             if (link == null) continue;
             if (isMedia(link)) {
-                add(found, link, sourceLabel);
+                add(found, link, sourceLabel, detailUrl);
                 continue;
             }
             try {
@@ -145,19 +145,20 @@ final class SupjavServerResolver {
     private static void addMedia(final Map<String, VideoStream> out,
                                  final Document page, final String label) {
         for (final String url : Parser.media(page, true)) {
-            add(out, url, label);
+            add(out, url, label, page.location());
         }
     }
 
     private static void add(final Map<String, VideoStream> out,
-                            final String url, final String label) {
+                            final String url, final String label,
+                            final String referer) {
         if (!safePublicHttps(url) || !isMedia(url) || out.containsKey(label + "|" + url)) return;
         final boolean hls = url.toLowerCase(java.util.Locale.ROOT)
                 .matches(".*\\.(?:m3u8|m3u)(?:[?#].*)?");
         final String quality = Parser.resolution(url);
         out.put(label + "|" + url, new VideoStream.Builder()
                 .setId("SUPJAV|" + label + "|" + quality)
-                .setContent(url, true)
+                .setContent(url + "#supjav=1&ref=" + encode(referer), true)
                 .setResolution(quality)
                 .setMediaFormat(MediaFormat.MPEG_4)
                 .setDeliveryMethod(hls ? DeliveryMethod.HLS : DeliveryMethod.PROGRESSIVE_HTTP)
@@ -183,6 +184,14 @@ final class SupjavServerResolver {
             return safePublicHttps(link) ? link : null;
         } catch (final Exception ignored) {
             return null;
+        }
+    }
+
+    private static String encode(final String value) {
+        try {
+            return java.net.URLEncoder.encode(value, "UTF-8");
+        } catch (final Exception ignored) {
+            return "";
         }
     }
 
