@@ -1,20 +1,26 @@
 package org.schabi.newpipe.diagnostics;
 
 import android.content.Context;
-import android.content.Intent;
+import android.content.ContentValues;
+import android.content.ContentResolver;
 import android.net.Uri;
+import android.os.Environment;
+import android.provider.MediaStore;
+import android.Manifest;
+import android.content.pm.PackageManager;
 import android.os.Build;
 import android.util.Log;
 
-import androidx.core.content.FileProvider;
+import androidx.core.content.ContextCompat;
 
 import org.schabi.newpipe.BuildConfig;
 
-import java.io.BufferedWriter;
+import java.io.IOException;
+import java.io.OutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
-import java.io.OutputStreamWriter;
+
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
@@ -173,18 +179,84 @@ public final class DiagnosticLog {
         return zip;
     }
 
-    public static void share(final Context context) throws Exception {
-        event("DIAGNOSTICS", "EXPORT", "user requested local ZIP export");
-        final File exported = exportZip(context);
-        final Uri uri = FileProvider.getUriForFile(context,
-                BuildConfig.APPLICATION_ID + ".provider", exported);
-        final Intent send = new Intent(Intent.ACTION_SEND);
-        send.setType("application/zip");
-        send.putExtra(Intent.EXTRA_STREAM, uri);
-        send.setClipData(android.content.ClipData.newUri(
-                context.getContentResolver(), "Pipe diagnostics", uri));
-        send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        context.startActivity(Intent.createChooser(send, "Export Pipe diagnostics"));
+    /**
+     * Write straight into the public Downloads collection. Android 10+ uses
+     * MediaStore (no storage permission or document/share chooser required).
+     * Android 8-9 uses the legacy public directory with WRITE_EXTERNAL_STORAGE.
+     *
+     * @return the saved file name shown to the user after completion
+     */
+    public static String saveToDownloads(final Context context) throws Exception {
+        final Context ctx = context.getApplicationContext();
+        event("DIAGNOSTICS", "EXPORT", "saving diagnostic ZIP to Downloads");
+        final File zip = exportZip(ctx);
+        final String name = zip.getName();
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                saveWithMediaStore(ctx, zip, name);
+            } else {
+                if (ContextCompat.checkSelfPermission(ctx,
+                        Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                        != PackageManager.PERMISSION_GRANTED) {
+                    throw new SecurityException(
+                            "Storage permission is required on Android 8-9");
+                }
+                final File downloads = Environment.getExternalStoragePublicDirectory(
+                        Environment.DIRECTORY_DOWNLOADS);
+                if (!downloads.exists() && !downloads.mkdirs()) {
+                    throw new IOException("Cannot create public Downloads directory");
+                }
+                final File target = new File(downloads, name);
+                try (FileInputStream input = new FileInputStream(zip);
+                     FileOutputStream output = new FileOutputStream(target)) {
+                    copy(input, output);
+                }
+            }
+            event("DIAGNOSTICS", "SAVED_TO_DOWNLOADS", "file=" + name);
+            return name;
+        } finally {
+            if (!zip.delete()) {
+                zip.deleteOnExit();
+            }
+        }
+    }
+
+    private static void saveWithMediaStore(final Context context, final File zip,
+                                            final String fileName) throws IOException {
+        final ContentResolver resolver = context.getContentResolver();
+        final ContentValues values = new ContentValues();
+        values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
+        values.put(MediaStore.MediaColumns.MIME_TYPE, "application/zip");
+        values.put(MediaStore.MediaColumns.RELATIVE_PATH,
+                Environment.DIRECTORY_DOWNLOADS + "/");
+        values.put(MediaStore.MediaColumns.IS_PENDING, 1);
+        final Uri uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+        if (uri == null) throw new IOException("Cannot create Downloads entry");
+        boolean complete = false;
+        try {
+            try (FileInputStream input = new FileInputStream(zip);
+                 OutputStream output = resolver.openOutputStream(uri)) {
+                if (output == null) throw new IOException("Cannot open Downloads output stream");
+                copy(input, output);
+            }
+            values.clear();
+            values.put(MediaStore.MediaColumns.IS_PENDING, 0);
+            if (resolver.update(uri, values, null, null) < 1) {
+                throw new IOException("Could not finalize Downloads entry");
+            }
+            complete = true;
+        } finally {
+            if (!complete) resolver.delete(uri, null, null);
+        }
+    }
+
+    private static void copy(final FileInputStream input, final OutputStream output)
+            throws IOException {
+        final byte[] buffer = new byte[8192];
+        int count;
+        while ((count = input.read(buffer)) != -1) {
+            output.write(buffer, 0, count);
+        }
     }
 
     public static void clear(final Context context) {
