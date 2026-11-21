@@ -31,7 +31,7 @@ final class SupjavPlayerControls extends FrameLayout {
     private final TextView play;
     private final TextView clock;
     private final TextView quality;
-    private final TextView speed;
+    private TextView speed;
     private final SeekBar timeline;
     private final LinearLayout bottom;
     private final LinearLayout top;
