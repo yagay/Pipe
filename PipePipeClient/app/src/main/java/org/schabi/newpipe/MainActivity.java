@@ -61,6 +61,7 @@ import org.schabi.newpipe.databinding.ToolbarLayoutBinding;
 import org.schabi.newpipe.error.ErrorUtil;
 import org.schabi.newpipe.extractor.NewPipe;
 import org.schabi.newpipe.extractor.ServiceList;
+import org.schabi.newpipe.diagnostics.DiagnosticLog;
 import org.schabi.newpipe.extractor.ServiceCategoryRegistry;
 import org.schabi.newpipe.extractor.StreamingService;
 import org.schabi.newpipe.extractor.exceptions.ExtractionException;
@@ -283,6 +284,8 @@ public class MainActivity extends AppCompatActivity {
         if (previousService != null && previousService.getGroupId() == R.id.menu_services_group) {
             previousService.setChecked(false);
         }
+        DiagnosticLog.event("NAVIGATION", "SERVICE_SELECTED",
+                "serviceId=" + item.getItemId());
         ServiceHelper.setSelectedServiceId(this, item.getItemId());
         SearchFragment.setPersistedSearchServiceId(this, item.getItemId());
         item.setChecked(true);
