@@ -22,3 +22,23 @@ for (const [label, okay] of checks) {
   if (!okay) throw new Error('Supjav HLS regression: ' + label);
 }
 console.log('Supjav HLS JS syntax and playback policy: OK');
+
+// A fullscreen rotation previously persisted Material's transient SETTLING
+// state and crashed VideoDetailFragment.setupBottomPlayer on recreation.
+// Keep this invariant in the same Debug preflight as the Supjav player.
+const fragment = fs.readFileSync(
+  'PipePipeClient/app/src/main/java/org/schabi/newpipe/fragments/detail/VideoDetailFragment.java',
+  'utf8'
+);
+const lifecycleChecks = [
+  ['sanitizer exists', fragment.includes('private static int stableBottomSheetState(')],
+  ['saving uses stable states', fragment.includes('outState.putInt("bottomSheetState", stableBottomSheetState(bottomSheetState))')],
+  ['restore sanitizes older bundles', fragment.includes('bottomSheetState = stableBottomSheetState(savedInstanceState.getInt(')],
+  ['setup sanitizes before setState', /bottomSheetState = stableBottomSheetState\(bottomSheetState\);\s*bottomSheetBehavior\.setState\(bottomSheetState\)/.test(fragment)],
+  ['transition callback stores stable states only', /if \(newState == BottomSheetBehavior\.STATE_HIDDEN[\s\S]{0,240}bottomSheetState = newState;/.test(fragment)],
+  ['Supjav expands with stable state', /private void displaySupjavInPipePlayer[\s\S]{0,550}bottomSheetState = BottomSheetBehavior\.STATE_EXPANDED/.test(fragment)]
+];
+for (const [label, okay] of lifecycleChecks) {
+  if (!okay) throw new Error('Supjav fullscreen/BottomSheet regression: ' + label);
+}
+console.log('Player BottomSheet stable-state restoration: OK');
