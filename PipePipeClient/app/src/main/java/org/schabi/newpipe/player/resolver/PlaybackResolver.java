@@ -402,7 +402,8 @@ public interface PlaybackResolver extends Resolver<StreamInfo, MediaSource> {
         final String url = stream.getContent();
         if (isNullOrEmpty(url)) throw new IOException("Empty Supjav HLS URL");
         return dataSource.getSupjavHlsMediaSourceFactory(
-                extractPageReferer(url, "#supjav=1&ref=")).createMediaSource(
+                extractStreamParameter(url, "ref"),
+                !"0".equals(extractStreamParameter(url, "origin"))).createMediaSource(
                 new MediaItem.Builder().setTag(metadata)
                         .setUri(Uri.parse(stripStreamMarker(url, "#supjav=1")))
                         .setCustomCacheKey(cacheKey).build());
@@ -418,7 +419,8 @@ public interface PlaybackResolver extends Resolver<StreamInfo, MediaSource> {
         final String url = stream.getContent();
         if (isNullOrEmpty(url)) throw new IOException("Empty Supjav MP4 URL");
         return dataSource.getSupjavProgressiveMediaSourceFactory(
-                extractPageReferer(url, "#supjav=1&ref=")).createMediaSource(
+                extractStreamParameter(url, "ref"),
+                !"0".equals(extractStreamParameter(url, "origin"))).createMediaSource(
                 new MediaItem.Builder().setTag(metadata)
                         .setUri(Uri.parse(stripStreamMarker(url, "#supjav=1")))
                         .setCustomCacheKey(cacheKey).build());
