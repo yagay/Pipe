@@ -89,6 +89,13 @@
             android:title="@string/settings_category_advanced_title"
             app:iconSpaceReserved="false" />
 
+    <Preference
+        android:key="pipe_export_diagnostics_main"
+        android:icon="@drawable/ic_bug_report"
+        android:title="Export diagnostic ZIP"
+        android:summary="Share local error, network, source and playback diagnostics"
+        app:iconSpaceReserved="false" />
+
     <PreferenceScreen
         android:fragment="org.schabi.newpipe.settings.DebugSettingsFragment"
         android:icon="@drawable/ic_bug_report"
