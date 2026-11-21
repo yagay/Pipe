@@ -1534,7 +1534,11 @@ public final class VideoDetailFragment
             button.setGravity(android.view.Gravity.CENTER);
             button.setClickable(true);
             button.setFocusable(true);
-            button.setBackgroundResource(android.R.attr.selectableItemBackgroundBorderless);
+            final TypedValue backgroundAttr = new TypedValue();
+            requireContext().getTheme().resolveAttribute(
+                    android.R.attr.selectableItemBackgroundBorderless,
+                    backgroundAttr, true);
+            button.setBackgroundResource(backgroundAttr.resourceId);
             toolbar.addView(button, 0, new LinearLayout.LayoutParams(0,
                     getResources().getDimensionPixelSize(R.dimen.detail_control_height), 1));
             selector = button;
