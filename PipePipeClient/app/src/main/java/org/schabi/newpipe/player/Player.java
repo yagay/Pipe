@@ -78,6 +78,8 @@ import androidx.core.view.WindowInsetsCompat;
 import androidx.fragment.app.FragmentManager;
 import androidx.preference.PreferenceManager;
 import androidx.recyclerview.widget.ItemTouchHelper;
+import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import androidx.media3.common.*;
@@ -3934,6 +3936,20 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
     }
 
     private void buildQueue() {
+        // Homepage-style two-column cards, but only for the video queue.
+        // The chapters/segments view below remains a single-column list.
+        if (itemTouchHelper != null) {
+            itemTouchHelper.attachToRecyclerView(null);
+        }
+        playQueueAdapter.setGridMode(true);
+        final GridLayoutManager manager = new GridLayoutManager(context, 2);
+        manager.setSpanSizeLookup(new GridLayoutManager.SpanSizeLookup() {
+            @Override
+            public int getSpanSize(final int position) {
+                return playQueueAdapter.isFooterPosition(position) ? 2 : 1;
+            }
+        });
+        binding.itemsList.setLayoutManager(manager);
         binding.itemsList.setAdapter(playQueueAdapter);
         binding.itemsList.setClickable(true);
         binding.itemsList.setLongClickable(true);
@@ -3974,14 +3990,15 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
     }
 
     private void buildSegments() {
+        if (itemTouchHelper != null) {
+            itemTouchHelper.attachToRecyclerView(null);
+        }
+        binding.itemsList.setLayoutManager(new LinearLayoutManager(context));
         binding.itemsList.setAdapter(segmentAdapter);
         binding.itemsList.setClickable(true);
         binding.itemsList.setLongClickable(false);
 
         binding.itemsList.clearOnScrollListeners();
-        if (itemTouchHelper != null) {
-            itemTouchHelper.attachToRecyclerView(null);
-        }
 
         getCurrentStreamInfo().ifPresent(segmentAdapter::setItems);
 
