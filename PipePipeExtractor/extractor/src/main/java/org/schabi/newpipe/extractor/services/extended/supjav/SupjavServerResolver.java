@@ -58,6 +58,32 @@ final class SupjavServerResolver {
                 final Document player = org.jsoup.Jsoup.parse(response.responseBody(),
                         finalUrl == null ? link : finalUrl);
                 addMedia(found, player, name);
+                // A Supjav wrapper commonly embeds a second provider page.
+                // Follow only a declared player frame, not unrelated ad frames.
+                int nested = 0;
+                for (final Element frame : player.select(
+                        "iframe#video[src], iframe#player[src], "
+                        + ".player iframe[src], iframe[src*=/embed/], iframe[src*=/e/]")) {
+                    if (++nested > 3) break;
+                    final String frameUrl = frame.absUrl("src");
+                    if (!safePublicHttps(frameUrl)) continue;
+                    try {
+                        headers.put("Referer", Collections.singletonList(
+                                finalUrl == null ? link : finalUrl));
+                        final Response nestedResponse = NewPipe.getDownloader()
+                                .get(frameUrl, headers);
+                        if (nestedResponse.responseCode() != 200
+                                || nestedResponse.responseBody() == null
+                                || nestedResponse.responseBody().length() > 1000000) continue;
+                        final String nestedUrl = nestedResponse.latestUrl();
+                        if (nestedUrl != null && !safePublicHttps(nestedUrl)) continue;
+                        addMedia(found, org.jsoup.Jsoup.parse(
+                                nestedResponse.responseBody(),
+                                nestedUrl == null ? frameUrl : nestedUrl), name);
+                    } catch (final Exception ignored) {
+                        // Keep trying other explicitly declared player frames.
+                    }
+                }
             } catch (final Exception ignored) {
                 // A broken provider must not hide the other player choices.
             }
