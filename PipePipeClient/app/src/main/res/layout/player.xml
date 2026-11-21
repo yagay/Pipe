@@ -191,6 +191,42 @@
 
                     </LinearLayout>
 
+                    <!-- Supjav-only controls: one CD picker and one provider picker.
+                         These belong to the player overlay, never the detail page. -->
+                    <org.schabi.newpipe.views.NewPipeTextView
+                        android:id="@+id/supjavCdTextView"
+                        android:layout_width="wrap_content"
+                        android:layout_height="35dp"
+                        android:layout_marginEnd="4dp"
+                        android:background="?attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center"
+                        android:paddingHorizontal="4dp"
+                        android:singleLine="true"
+                        android:text="CD"
+                        android:textColor="@android:color/white"
+                        android:textSize="12sp"
+                        android:visibility="gone"
+                        tools:ignore="HardcodedText" />
+
+                    <org.schabi.newpipe.views.NewPipeTextView
+                        android:id="@+id/supjavServerTextView"
+                        android:layout_width="wrap_content"
+                        android:layout_height="35dp"
+                        android:layout_marginEnd="4dp"
+                        android:background="?attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center"
+                        android:paddingHorizontal="4dp"
+                        android:singleLine="true"
+                        android:text="Server"
+                        android:textColor="@android:color/white"
+                        android:textSize="12sp"
+                        android:visibility="gone"
+                        tools:ignore="HardcodedText" />
+
                     <org.schabi.newpipe.views.NewPipeTextView
                         android:id="@+id/qualityTextView"
                         android:layout_width="wrap_content"

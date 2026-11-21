@@ -96,12 +96,12 @@ public final class SupjavArchitectureTest {
     @Test
     public void cdAndServerPickersAreStrictlyScopedAndPreservePreferredProvider() {
         final String html = "<div class='btnst'>"
-                + "<a data-cd='1' data-link='x1'>EVS</a>"
-                + "<a data-cd='1' data-link='x2'>VAS</a>"
-                + "<a data-cd='1' data-link='x3'>LUC</a>"
-                + "<a data-cd='2' data-link='y1'>EVS</a>"
-                + "<a data-cd='2' data-link='y2'>VOE</a>"
-                + "<a data-cd='2' data-link='y3'>LUC</a></div>";
+                + "<a data-cd='CD1' data-link='x1'>EVS</a>"
+                + "<a data-cd='CD1' data-link='x2'>VAS</a>"
+                + "<a data-cd='CD1' data-link='x3'>LUC</a>"
+                + "<a data-cd='CD2' data-link='y1'>EVS</a>"
+                + "<a data-cd='CD2' data-link='y2'>VOE</a>"
+                + "<a data-cd='CD2' data-link='y3'>LUC</a></div>";
         final List<SupjavServerCatalog.Entry> entries =
                 SupjavServerCatalog.parse(Jsoup.parse(html, DETAIL), DETAIL);
         assertEquals(java.util.Arrays.asList("CD1", "CD2"),

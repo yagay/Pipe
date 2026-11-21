@@ -1573,81 +1573,6 @@ public final class VideoDetailFragment
         return entries.isEmpty() ? "Main" : entries.get(0).part;
     }
 
-    private android.widget.TextView ensureSupjavSourceButton(
-            final LinearLayout toolbar, final String tag, final String caption,
-            final int position) {
-        final View existing = toolbar.findViewWithTag(tag);
-        if (existing instanceof android.widget.TextView) {
-            return (android.widget.TextView) existing;
-        }
-        final android.widget.TextView button = new android.widget.TextView(requireContext());
-        button.setTag(tag);
-        button.setText(caption);
-        button.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-        button.setGravity(android.view.Gravity.CENTER);
-        button.setClickable(true);
-        button.setFocusable(true);
-        button.setSingleLine(true);
-        button.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        final TypedValue backgroundAttr = new TypedValue();
-        requireContext().getTheme().resolveAttribute(
-                android.R.attr.selectableItemBackgroundBorderless, backgroundAttr, true);
-        button.setBackgroundResource(backgroundAttr.resourceId);
-        toolbar.addView(button, Math.min(position, toolbar.getChildCount()),
-                new LinearLayout.LayoutParams(0,
-                        getResources().getDimensionPixelSize(R.dimen.detail_control_height), 1));
-        return button;
-    }
-
-    /**
-     * Two independent controls above the player: choose CD first, then a
-     * server that actually belongs to the chosen CD. The quality menu retains
-     * only playback quality and the same two entry points.
-     */
-    private void configureSupjavSourceButton(final StreamInfo info) {
-        if (binding == null) return;
-        final LinearLayout toolbar = binding.detailSecondaryControlPanel;
-        final View legacy = toolbar.findViewWithTag("supjav_source_picker");
-        if (legacy != null) toolbar.removeView(legacy);
-        final boolean supjav = info.getServiceId() == ServiceList.Supjav.getServiceId();
-        if (!supjav) {
-            for (final String tag : new String[]{"supjav_cd_picker", "supjav_server_picker"}) {
-                final View button = toolbar.findViewWithTag(tag);
-                if (button != null) toolbar.removeView(button);
-            }
-            return;
-        }
-
-        final android.widget.TextView cd = ensureSupjavSourceButton(
-                toolbar, "supjav_cd_picker", "CD ▾", 0);
-        final android.widget.TextView server = ensureSupjavSourceButton(
-                toolbar, "supjav_server_picker", "Server ▾", 1);
-        cd.setContentDescription("Choose CD");
-        server.setContentDescription("Choose server for the selected CD");
-        cd.setOnClickListener(v -> showSupjavCdPicker());
-        server.setOnClickListener(v -> showSupjavServerPicker());
-
-        final String detailUrl = info.getUrl();
-        disposables.add(Single.fromCallable(() -> SupjavServerCatalog.forPage(detailUrl))
-                .subscribeOn(Schedulers.io())
-                .observeOn(AndroidSchedulers.mainThread())
-                .subscribe(entries -> {
-                    if (!isAdded() || binding == null || currentInfo != info) return;
-                    final String part = activeSupjavPart(entries, activeSupjavUrl());
-                    final List<String> discs = SupjavServerCatalog.parts(entries);
-                    cd.setVisibility(discs.size() > 1 ? View.VISIBLE : View.GONE);
-                    cd.setText(part + " ▾");
-                    final SupjavServerCatalog.Entry chosen =
-                            SupjavServerCatalog.entryForIndex(entries,
-                                    SupjavServerCatalog.selectedIndex(activeSupjavUrl()));
-                    final SupjavServerCatalog.Entry shown = chosen != null
-                            && part.equals(chosen.part)
-                            ? chosen : SupjavServerCatalog.preferredForPart(entries, part, null);
-                    server.setText((shown == null ? "Server" : shown.provider) + " ▾");
-                }, error -> DiagnosticLog.error("SUPJAV", "SOURCE_BUTTON_CATALOG_FAILED",
-                        error, "CD and server labels")));
-    }
-
     /** Default to the first-CD VAS line, but let the user override it at any time. */
     private void playPreferredSupjavServer() {
         final String detailUrl = currentInfo != null ? currentInfo.getUrl() : url;
@@ -2166,8 +2091,7 @@ public final class VideoDetailFragment
         super.handleResult(info);
 
         currentInfo = info;
-        configureSupjavSourceButton(info);
-        setInitialData(info.getServiceId(), info.getOriginalUrl(), info.getName(), playQueue);
+         setInitialData(info.getServiceId(), info.getOriginalUrl(), info.getName(), playQueue);
 
         updateTabs(info);
 

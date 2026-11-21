@@ -324,9 +324,7 @@ public final class Player implements
     //////////////////////////////////////////////////////////////////////////*/
 
     private static final int POPUP_MENU_ID_QUALITY = 69;
-    private static final int POPUP_MENU_ID_SUPJAV_SERVER = 70;
-    private static final int POPUP_MENU_ID_SUPJAV_CD = 71;
-    private static final int POPUP_MENU_ID_PLAYBACK_SPEED = 79;
+     private static final int POPUP_MENU_ID_PLAYBACK_SPEED = 79;
     private static final int POPUP_MENU_ID_CAPTION = 89;
     private static final int POPUP_MENU_ID_AUDIO_TRACK = 99;
     private static final int POPUP_MENU_ID_DISPLAY_MODE = 109;
@@ -626,6 +624,16 @@ public final class Player implements
     private void initListeners() {
         binding.qualityTextView.setOnClickListener(
                 new QualityClickListener(this, qualityPopupMenu));
+        binding.supjavCdTextView.setOnClickListener(v -> {
+            final Intent request = new Intent(VideoDetailFragment.ACTION_SUPJAV_CD_PICKER);
+            request.setPackage(context.getPackageName());
+            context.sendBroadcast(request);
+        });
+        binding.supjavServerTextView.setOnClickListener(v -> {
+            final Intent request = new Intent(VideoDetailFragment.ACTION_SUPJAV_SERVER_PICKER);
+            request.setPackage(context.getPackageName());
+            context.sendBroadcast(request);
+        });
         binding.playbackSpeed.setOnClickListener(
                 new PlaybackSpeedClickListener(this, playbackSpeedPopupMenu));
 
@@ -4167,6 +4175,8 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
         final StreamInfo info = getCurrentStreamInfo().get();
 
         binding.qualityTextView.setVisibility(View.GONE);
+        binding.supjavCdTextView.setVisibility(View.GONE);
+        binding.supjavServerTextView.setVisibility(View.GONE);
         binding.playbackSpeed.setVisibility(View.GONE);
 
         binding.playbackEndTime.setVisibility(View.GONE);
@@ -4274,25 +4284,22 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
                         stream.getId() != null
                         && stream.getId().startsWith("SUPJAV|"));
         if (supjavSources) {
-            // Only the currently selected CD/source is in availableStreams.
-            // Disc/server switching belongs to two distinct actions, not a
-            // combined dialog or submenus mixed with video resolution.
+            // Source selection has its own visible player controls.
+            // The quality popup stays dedicated to resolutions.
             for (int i = 0; i < availableStreams.size(); i++) {
                 final VideoStream stream = availableStreams.get(i);
                 qualityPopupMenu.getMenu().add(POPUP_MENU_ID_QUALITY, i, Menu.NONE,
                         stream.getResolution());
             }
-            final VideoStream current = getSelectedVideoStream();
-            final String[] selectedFields = current == null || current.getId() == null
-                    ? new String[0] : current.getId().split("\\|", 4);
-            final String selectedPart = selectedFields.length > 1
-                    ? selectedFields[1] : "CD";
-            final String selectedServer = selectedFields.length > 2
-                    ? selectedFields[2] : "Server";
-            qualityPopupMenu.getMenu().add(POPUP_MENU_ID_SUPJAV_CD, -2401,
-                    Menu.NONE, "CD · " + selectedPart);
-            qualityPopupMenu.getMenu().add(POPUP_MENU_ID_SUPJAV_SERVER, -2400,
-                    Menu.NONE, "Server · " + selectedServer);
+            final VideoStream selected = getSelectedVideoStream() == null
+                    ? availableStreams.get(0) : getSelectedVideoStream();
+            final String[] fields = selected.getId().split("\\|", 4);
+            binding.supjavCdTextView.setText(fields.length > 1 ? fields[1] : "CD");
+            binding.supjavServerTextView.setText(fields.length > 2 ? fields[2] : "Server");
+            binding.supjavCdTextView.setContentDescription("Choose CD");
+            binding.supjavServerTextView.setContentDescription("Choose Supjav server");
+            binding.supjavCdTextView.setVisibility(View.VISIBLE);
+            binding.supjavServerTextView.setVisibility(View.VISIBLE);
         } else {
             for (int i = 0; i < availableStreams.size(); i++) {
                 final VideoStream videoStream = availableStreams.get(i);
@@ -4412,19 +4419,6 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
                     + "menuItem.getItemId = [" + menuItem.getItemId() + "]");
         }
 
-        if (menuItem.getGroupId() == POPUP_MENU_ID_SUPJAV_CD) {
-            final Intent picker = new Intent(VideoDetailFragment.ACTION_SUPJAV_CD_PICKER);
-            picker.setPackage(context.getPackageName());
-            context.sendBroadcast(picker);
-            return true;
-        }
-        if (menuItem.getGroupId() == POPUP_MENU_ID_SUPJAV_SERVER) {
-            final Intent picker = new Intent(
-                    VideoDetailFragment.ACTION_SUPJAV_SERVER_PICKER);
-            picker.setPackage(context.getPackageName());
-            context.sendBroadcast(picker);
-            return true;
-        }
         if (menuItem.getGroupId() == POPUP_MENU_ID_QUALITY) {
             final int menuItemIndex = menuItem.getItemId();
             if (selectedStreamIndex == menuItemIndex || availableStreams == null
