@@ -134,12 +134,7 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
         loadingLayer.addView(loadingControls, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.CENTER));
-        selectionHandler.postDelayed(() -> {
-            if (loadingLayer != null && loadingLayer.getVisibility() == View.VISIBLE
-                    && embeddedHls == null) {
-                revealWebsitePlayer("discovery-timeout");
-            }
-        }, 18000);
+        scheduleDiscoveryFallback();
         final WebSettings settings = browser.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
@@ -384,6 +379,7 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
         if (loadingLayer != null) loadingLayer.setVisibility(View.VISIBLE);
         if (statusText != null) statusText.setText("正在解析视频播放源…");
         selectionHandler.removeCallbacksAndMessages(null);
+        scheduleDiscoveryFallback();
         if (browser != null) {
             browser.stopLoading();
             browser.loadUrl(nextPage);
@@ -508,6 +504,16 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
         if (!isFinishing() && !isDestroyed() && !mediaDiscoveryCompleted) {
             revealWebsitePlayer("hls-unavailable");
         }
+    }
+
+    private void scheduleDiscoveryFallback() {
+        // A reused activity requires a fresh timeout for each video/CD.
+        selectionHandler.postDelayed(() -> {
+            if (loadingLayer != null && loadingLayer.getVisibility() == View.VISIBLE
+                    && embeddedHls == null) {
+                revealWebsitePlayer("discovery-timeout");
+            }
+        }, 18000);
     }
 
     private void revealWebsitePlayer(final String reason) {
