@@ -68,7 +68,6 @@ import org.schabi.newpipe.extractor.NewPipe;
 import org.schabi.newpipe.extractor.ServiceList;
 import org.schabi.newpipe.extractor.services.extended.supjav.SupjavServerCatalog;
 import org.schabi.newpipe.diagnostics.DiagnosticLog;
-import org.schabi.newpipe.views.SupjavWebPlayerActivity;
 import org.schabi.newpipe.extractor.exceptions.ContentNotSupportedException;
 import org.schabi.newpipe.extractor.exceptions.ExtractionException;
 import org.schabi.newpipe.extractor.sponsorblock.SponsorBlockAction;
@@ -1104,19 +1103,19 @@ public final class VideoDetailFragment
                                 ? "" : rootCause.getMessage();
                         final boolean media403 = details.contains("get-referer=403")
                                 || details.contains("access refused (HTTP 403)");
+                        // Keep LUC and every selected Supjav server on Pipe's
+                        // existing detail/player surface. A blocked native source
+                        // must not silently open a second WebView player Activity.
                         final String errorSummary = media403
-                                ? "The selected media server refused all native HTTP "
-                                        + "request profiles (403). This is not a codec error. "
-                                        + "Try its website player, or choose another source."
-                                : "The selected source could not be resolved natively. "
-                                        + "Try its website player or choose another source.";
+                                ? "The selected server refused native media requests (HTTP 403). "
+                                        + "This is not a video decoder failure. "
+                                        + "Choose another server or stay on this page."
+                                : "The selected source could not be resolved for Pipe's player. "
+                                        + "Choose another server or stay on this page.";
                         new AlertDialog.Builder(requireContext())
                                 .setTitle("Supjav server unavailable")
                                 .setMessage(errorSummary)
-                                .setPositiveButton("Web player (selected server)",
-                                        (dialog, which) ->
-                                                SupjavWebPlayerActivity.open(requireContext(), url))
-                                .setNeutralButton("Other servers",
+                                .setPositiveButton("Other servers",
                                         (dialog, which) -> showSupjavServerPicker())
                                 .setNegativeButton(android.R.string.cancel, null)
                                 .show();
@@ -1640,9 +1639,7 @@ public final class VideoDetailFragment
                         new AlertDialog.Builder(requireContext())
                                 .setTitle("Supjav")
                                 .setMessage("No server entries on this video page.")
-                                .setPositiveButton("Open website", (dialog, which) ->
-                                        SupjavWebPlayerActivity.open(requireContext(), detailUrl))
-                                .setNegativeButton(android.R.string.cancel, null).show();
+                                .setPositiveButton(android.R.string.ok, null).show();
                         return;
                     }
                     final String[] labels = new String[entries.size()];
@@ -1659,8 +1656,6 @@ public final class VideoDetailFragment
                                         dialog.dismiss();
                                         navigateToSupjavServer(detailUrl, entries.get(position));
                                     })
-                            .setNeutralButton("Open website", (dialog, which) ->
-                                    SupjavWebPlayerActivity.open(requireContext(), detailUrl))
                             .setNegativeButton(android.R.string.cancel, null)
                             .show();
                 }, error -> {
