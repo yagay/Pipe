@@ -105,6 +105,7 @@ public final class SupjavBrowserHlsDocument {
                  }document.getElementById('clock').textContent=clock(video.currentTime)+
                    ' / '+clock(video.duration);
                    toggle.textContent=video.paused?'▶':'❚❚';}
+                 video.addEventListener('ended',function(){log('ENDED');});
                  video.addEventListener('timeupdate',update);
                  video.addEventListener('durationchange',update);
                  video.addEventListener('play',function(){status.textContent='';log('PLAYING');update();});
