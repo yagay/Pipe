@@ -8,6 +8,9 @@ import android.view.MenuItem;
 import androidx.annotation.NonNull;
 
 import org.schabi.newpipe.MainActivity;
+import org.schabi.newpipe.diagnostics.DiagnosticLog;
+import androidx.preference.Preference;
+import android.widget.Toast;
 import org.schabi.newpipe.R;
 import org.schabi.newpipe.util.ReleaseVersionUtil;
 
@@ -30,7 +33,26 @@ public class MainSettingsFragment extends BasePreferenceFragment {
 //            defaultPreferences.edit().putBoolean(getString(R.string.update_app_key), false).apply();
 //        }
 
-        // Keep diagnostic export accessible in release builds as well.
+        final Preference export = findPreference("pipe_export_diagnostics_main");
+        if (export != null) {
+            export.setOnPreferenceClickListener(preference -> {
+                try {
+                    DiagnosticLog.share(requireContext());
+                } catch (final Exception error) {
+                    DiagnosticLog.error("DIAGNOSTICS", "EXPORT_FAILED", error,
+                            "main settings export");
+                    Toast.makeText(requireContext(),
+                            "Could not export diagnostics", Toast.LENGTH_LONG).show();
+                }
+                return true;
+            });
+        }
+
+        // Keep potentially dangerous debug-only controls out of release builds.
+        if (!DEBUG) {
+            getPreferenceScreen().removePreference(
+                    findPreference(getString(R.string.debug_pref_screen_key)));
+        }
     }
 
     @Override
