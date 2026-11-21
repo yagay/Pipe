@@ -93,6 +93,13 @@ public final class MissAvParsingHelper {
         return headers;
     }
 
+    /** Clear a single HTML cache entry when the user explicitly retries navigation. */
+    public static void invalidateDocument(final String url) {
+        synchronized (DOCUMENT_CACHE) {
+            DOCUMENT_CACHE.remove(localizeUrl(url));
+        }
+    }
+
     public static Document fetchDocument(final String url) throws IOException, ExtractionException {
         final String localizedUrl = localizeUrl(url);
         synchronized (DOCUMENT_CACHE) {
