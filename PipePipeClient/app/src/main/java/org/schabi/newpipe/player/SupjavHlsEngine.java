@@ -281,7 +281,7 @@ public final class SupjavHlsEngine {
 
     public void command(final String safeCommand) {
         if (player != null && ready && safeCommand.matches(
-                "(?:toggle\\(\\)|pause\\(\\)|cycleQuality\\(\\)|seek\\(-?[0-9]+\\)|seekFraction\\([0-9.]+\\)|speed\\([0-9.]+\\))")) {
+                "(?:toggle\\(\\)|play\\(\\)|pause\\(\\)|cycleQuality\\(\\)|seek\\(-?[0-9]+\\)|seekFraction\\([0-9.]+\\)|speed\\([0-9.]+\\))")) {
             player.evaluateJavascript("(function(){if(window.PipeHls)window.PipeHls."
                     + safeCommand + ";})()", null);
         }
