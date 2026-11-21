@@ -20,6 +20,15 @@ import java.util.Map;
 final class SupjavMediaProbe {
     enum Status { PLAYABLE, BLOCKED, UNKNOWN }
 
+    static final class Assessment {
+        final Status status;
+        final String profiles;
+        Assessment(final Status status, final String profiles) {
+            this.status = status;
+            this.profiles = profiles;
+        }
+    }
+
     private static final String AGENT =
             "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 "
             + "(KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36";
@@ -27,20 +36,24 @@ final class SupjavMediaProbe {
     private SupjavMediaProbe() { }
 
     static Status probe(final VideoStream stream) {
+        return assess(stream).status;
+    }
+
+    static Assessment assess(final VideoStream stream) {
         final String content = stream.getContent();
         final int marker = content.indexOf("#supjav=1&ref=");
-        if (marker < 0) return Status.UNKNOWN;
+        if (marker < 0) return new Assessment(Status.UNKNOWN, "unclassified");
         final String url = content.substring(0, marker);
         final String ref = decode(content.substring(marker + "#supjav=1&ref=".length()));
         if (!url.startsWith("https://") || !ref.startsWith("https://")) {
-            return Status.UNKNOWN;
+            return new Assessment(Status.UNKNOWN, "unclassified");
         }
         final String origin;
         try {
             final URI uri = URI.create(ref);
             origin = uri.getScheme() + "://" + uri.getHost();
         } catch (final Exception e) {
-            return Status.UNKNOWN;
+            return new Assessment(Status.UNKNOWN, "unclassified");
         }
 
         // Downloading an MP4 to probe its header could buffer an entire movie
@@ -49,33 +62,37 @@ final class SupjavMediaProbe {
             try {
                 final Response head = NewPipe.getDownloader().head(url, headers(ref, origin, false));
                 final int status = head.responseCode();
-                if (status == 404 || status == 410) return Status.BLOCKED;
+                if (status == 404 || status == 410) return new Assessment(Status.BLOCKED, "HEAD=" + status);
                 if (status >= 200 && status < 300) {
                     final String type = head.getHeader("Content-Type");
                     return type != null && (type.toLowerCase(java.util.Locale.ROOT)
                             .contains("text/html") || type.toLowerCase(java.util.Locale.ROOT)
                             .contains("application/json"))
-                            ? Status.BLOCKED : Status.PLAYABLE;
+                            ? new Assessment(Status.BLOCKED, "HEAD=200 html")
+                            : new Assessment(Status.PLAYABLE, "HEAD=200");
                 }
             } catch (final Exception ignored) {
                 // Several video hosts reject HEAD although a GET works.
             }
-            return Status.UNKNOWN;
+            return new Assessment(Status.UNKNOWN, "unclassified");
         }
 
         // HLS manifests are short text documents. Validate the actual body,
         // not just an extension or an HTML snippet which happens to mention it.
         final ProbeResult first = checkHls(url, headers(ref, origin, true));
-        if (first.status == Status.PLAYABLE) return Status.PLAYABLE;
-        if (first.code != 403 && first.code != 416) return first.status;
+        if (first.status == Status.PLAYABLE) return new Assessment(Status.PLAYABLE, "range-origin=" + first.code);
+        if (first.code != 403 && first.code != 416) return new Assessment(first.status, "range-origin=" + first.code + " " + first.reason);
 
         // A range request is sometimes denied even though a full GET works.
         final ProbeResult normal = checkHls(url, headers(ref, origin, false));
-        if (normal.status == Status.PLAYABLE) return Status.PLAYABLE;
-        if (normal.code != 403 && normal.code != 416) return normal.status;
+        if (normal.status == Status.PLAYABLE) return new Assessment(Status.PLAYABLE, "range-origin=" + first.code + " get-origin=" + normal.code);
+        if (normal.code != 403 && normal.code != 416) return new Assessment(normal.status, "range-origin=" + first.code + " get-origin=" + normal.code + " " + normal.reason);
 
         // A small subset of players require Referer but explicitly reject Origin.
-        return checkHls(url, headers(ref, null, false)).status;
+        final ProbeResult fallback = checkHls(url, headers(ref, null, false));
+        return new Assessment(fallback.status, "range-origin=" + first.code
+                + " get-origin=" + normal.code + " get-referer=" + fallback.code
+                + " " + fallback.reason);
     }
 
     private static ProbeResult checkHls(final String url,
@@ -86,14 +103,14 @@ final class SupjavMediaProbe {
                      NewPipe.getDownloader().getStreaming(url, headers)) {
             final int code = response.responseCode();
             if (code == 403 || code == 404 || code == 410 || code == 429) {
-                return new ProbeResult(Status.BLOCKED, code);
+                return new ProbeResult(Status.BLOCKED, code, "http");
             }
-            if (code < 200 || code >= 300) return new ProbeResult(Status.UNKNOWN, code);
+            if (code < 200 || code >= 300) return new ProbeResult(Status.UNKNOWN, code, "http");
             final String type = response.getHeader("Content-Type");
             if (type != null && (type.toLowerCase(java.util.Locale.ROOT)
                     .contains("text/html") || type.toLowerCase(java.util.Locale.ROOT)
                     .contains("application/json"))) {
-                return new ProbeResult(Status.BLOCKED, code);
+                return new ProbeResult(Status.BLOCKED, code, "non-media");
             }
             final byte[] prefix = new byte[8192];
             int count = 0;
@@ -107,9 +124,10 @@ final class SupjavMediaProbe {
                     java.nio.charset.StandardCharsets.UTF_8);
             final String head = text.replace("\uFEFF", "").trim();
             return new ProbeResult(head.startsWith("#EXTM3U")
-                    ? Status.PLAYABLE : Status.BLOCKED, code);
+                    ? Status.PLAYABLE : Status.BLOCKED, code,
+                    head.startsWith("#EXTM3U") ? "hls" : "invalid-hls");
         } catch (final Exception ignored) {
-            return new ProbeResult(Status.UNKNOWN, -1);
+            return new ProbeResult(Status.UNKNOWN, -1, "network-error");
         }
     }
 
@@ -136,9 +154,11 @@ final class SupjavMediaProbe {
     private static final class ProbeResult {
         final Status status;
         final int code;
-        ProbeResult(final Status status, final int code) {
+        final String reason;
+        ProbeResult(final Status status, final int code, final String reason) {
             this.status = status;
             this.code = code;
+            this.reason = reason;
         }
     }
 }
