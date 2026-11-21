@@ -4,6 +4,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
@@ -11,6 +13,7 @@ import android.view.ViewGroup;
 import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -34,6 +37,8 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
     private static final String EXTRA_SERVER = "supjav_server";
     private int selectedServer = -1;
     private boolean selectedApplied = false;
+    private boolean selectionStarted = false;
+    private final Handler selectionHandler = new Handler(Looper.getMainLooper());
     private FrameLayout root;
     private LinearLayout content;
     private WebView browser;
@@ -104,10 +109,10 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
             @Override
             public void onPageFinished(final WebView view, final String loadedUrl) {
                 super.onPageFinished(view, loadedUrl);
-                if (selectedApplied || selectedServer < 0 || !url.equals(loadedUrl)) {
+                if (selectionStarted || selectedServer < 0 || !url.equals(loadedUrl)) {
                     return;
                 }
-                selectedApplied = true;
+                selectionStarted = true;
                 // Match the upstream Supjav browser path: the first-party
                 // JumpChain result belongs inside an iframe, never a top-level
                 // downloader request. Preserve site cookies and frame context.
@@ -162,9 +167,47 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
                         + "try {button.click();return 'site-click';}"
                         + "catch(e){return 'click-failed';}"
                         + "})()";
-                view.evaluateJavascript(script, result ->
-                        DiagnosticLog.event("SUPJAV_WEB", "SELECTED_SERVER",
-                                "index=" + index + " state=" + result));
+                // Match the standalone Supjav renderer: first-party JumpChain
+                // may arrive after the page's initial onPageFinished callback.
+                // Retry only the selected line, and stop after a bounded budget.
+                selectionHandler.post(new Runnable() {
+                    private int attempts;
+                    @Override
+                    public void run() {
+                        if (browser != view || selectedApplied || attempts >= 10
+                                || isFinishing() || isDestroyed()) {
+                            return;
+                        }
+                        attempts++;
+                        view.evaluateJavascript(script, result -> {
+                            if (browser != view || selectedApplied) return;
+                            final String state = result == null ? "" : result;
+                            final boolean ready = state.contains("frame:")
+                                    || state.contains("site-click");
+                            DiagnosticLog.event("SUPJAV_WEB", "SELECTED_SERVER",
+                                    "index=" + index + " attempt=" + attempts
+                                            + " state=" + state);
+                            if (ready) {
+                                selectedApplied = true;
+                            } else if (attempts < 10) {
+                                selectionHandler.postDelayed(this, 900);
+                            }
+                        });
+                    }
+                });
+            }
+
+            @Override
+            public void onReceivedHttpError(final WebView view,
+                                            final WebResourceRequest request,
+                                            final WebResourceResponse response) {
+                if (response.getStatusCode() >= 400) {
+                    // Do not log full media URLs: signed query strings are sensitive.
+                    DiagnosticLog.event("SUPJAV_WEB", "HTTP_ERROR",
+                            "host=" + request.getUrl().getHost()
+                                    + " status=" + response.getStatusCode()
+                                    + " mainFrame=" + request.isForMainFrame());
+                }
             }
 
             @Override
@@ -249,6 +292,7 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
+        selectionHandler.removeCallbacksAndMessages(null);
         hideFullScreen();
         if (browser != null) {
             browser.stopLoading();
