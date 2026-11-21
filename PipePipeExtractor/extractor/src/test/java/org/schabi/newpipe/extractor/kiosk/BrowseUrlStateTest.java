@@ -62,4 +62,20 @@ public final class BrowseUrlStateTest {
         assertEquals(BASE + "?filters=hd", BrowseUrlState.applyOption(
                 BASE + "?filters=hd&o=mv", BASE, BrowseUrlState.OptionGroup.SORT));
     }
+    @Test
+    public void queryBasedCategoriesAreDistinct() {
+        assertFalse(BrowseUrlState.sameCategory(
+                "https://www.pornhub.com/video?c=3&sort=views",
+                "https://www.pornhub.com/video?c=4"));
+        assertTrue(BrowseUrlState.sameCategory(
+                "https://www.pornhub.com/video?c=3&sort=views&page=2",
+                "https://www.pornhub.com/video?c=3"));
+    }
+
+    @Test
+    public void ignoresQueryOrderWhenSelectingOptions() {
+        assertTrue(BrowseUrlState.selected(
+                BASE + "?sort=views&filters=individual",
+                BASE + "?sort=views", BrowseUrlState.OptionGroup.SORT));
+    }
 }
