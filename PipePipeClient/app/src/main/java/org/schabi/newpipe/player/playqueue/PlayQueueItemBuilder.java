@@ -21,14 +21,14 @@ public class PlayQueueItemBuilder {
     }
 
     public void buildStreamInfoItem(final PlayQueueItemHolder holder, final PlayQueueItem item) {
-        if (!TextUtils.isEmpty(item.getTitle())) {
-            holder.itemVideoTitleView.setText(item.getTitle());
-        }
+        holder.itemVideoTitleView.setText(
+                TextUtils.isEmpty(item.getTitle()) ? "" : item.getTitle());
         holder.itemAdditionalDetailsView.setText(Localization.concatenateStrings(item.getUploader(),
                 NewPipe.getNameOfService(item.getServiceId())));
 
         if (item.getDuration() > 0) {
             holder.itemDurationView.setText(Localization.getDurationString(item.getDuration()));
+            holder.itemDurationView.setVisibility(View.VISIBLE);
         } else {
             holder.itemDurationView.setVisibility(View.GONE);
         }
@@ -49,7 +49,9 @@ public class PlayQueueItemBuilder {
             return false;
         });
 
-        holder.itemHandle.setOnTouchListener(getOnTouchListener(holder));
+        if (holder.itemHandle.getVisibility() == View.VISIBLE) {
+            holder.itemHandle.setOnTouchListener(getOnTouchListener(holder));
+        }
     }
 
     private View.OnTouchListener getOnTouchListener(final PlayQueueItemHolder holder) {
