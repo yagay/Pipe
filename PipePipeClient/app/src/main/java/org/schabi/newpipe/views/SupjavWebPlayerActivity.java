@@ -91,7 +91,7 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
         final WebSettings settings = browser.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
-        settings.setMediaPlaybackRequiresUserGesture(true);
+        settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setJavaScriptCanOpenWindowsAutomatically(false);
         settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(false);
@@ -108,23 +108,63 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
                     return;
                 }
                 selectedApplied = true;
-                // The user explicitly selected this server in Pipe. Trigger the
-                // site's own player button rather than constructing guessed CDNs,
-                // bypassing challenges or injecting arbitrary media URLs.
+                // Match the upstream Supjav browser path: the first-party
+                // JumpChain result belongs inside an iframe, never a top-level
+                // downloader request. Preserve site cookies and frame context.
                 final int index = selectedServer;
-                final String selector = ".btn-server[data-link],.btnst a[data-link],"
+                final String script = "(function() {"
+                        + "var buttons = Array.from(document.querySelectorAll("
+                        + "' .btn-server[data-link],.btnst a[data-link],"
                         + ".btns a[data-link],#server-list [data-link],"
                         + ".server-list [data-link],.servers [data-link],"
-                        + "[data-server][data-link]";
-                final String script = "(function(){const items=Array.from("
-                        + "document.querySelectorAll('" + selector + "'));"
-                        + "const unique=items.filter((x,i)=>items.findIndex(y=>"
-                        + "y.getAttribute('data-link')===x.getAttribute('data-link'))===i);"
-                        + "if(unique[" + index + "]){unique[" + index + "].click();"
-                        + "return 'selected';}return 'missing';})()";
+                        + "[data-server][data-link]'.trim()));"
+                        + "var unique = buttons.filter(function(el, i) {"
+                        + "return buttons.findIndex(function(other) {"
+                        + "return other.getAttribute('data-link') === "
+                        + "el.getAttribute('data-link');}) === i;});"
+                        + "var button = unique[" + index + "];"
+                        + "if (!button) return 'missing:'+unique.length;"
+                        + "var token = button.getAttribute('data-link') || '';"
+                        + "var output = '',strategy='none';"
+                        + "if (typeof window.JumpChain === 'function') {"
+                        + "try { var value = window.JumpChain(token);"
+                        + "if(typeof value === 'string') {"
+                        + "var m = value.match(/https:\\/\\/[^\\s\\\"'<>]+/i);"
+                        + "output = m ? m[0].replace(/&amp;/g,'&') : '';"
+                        + "strategy = 'site-jump'; }}"
+                        + "catch(e){strategy='site-jump-error';}}"
+                        + "function wrapper(raw){try {"
+                        + "var u=new URL(raw,location.href);"
+                        + "return u.protocol==='https:' && "
+                        + "(u.hostname==='supremejav.com' || "
+                        + "u.hostname.endsWith('.supremejav.com')) &&"
+                        + "u.pathname==='/supjav.php' && u.searchParams.has('c');"
+                        + "}catch(e){return false;}}"
+                        + "if (!wrapper(output) && /^[A-Za-z0-9_-]{3,512}$/.test(token)) {"
+                        + "output='https://lk1.supremejav.com/supjav.php?c=' + "
+                        + "token.split('').reverse().join('');"
+                        + "strategy='legacy-token';}"
+                        + "if(wrapper(output)) {"
+                        + "var host=document.getElementById('supjav-native-host');"
+                        + "if(!host){host=document.createElement('div');"
+                        + "host.id='supjav-native-host';"
+                        + "host.style.cssText='position:fixed;inset:0;z-index:2147483000;"
+                        + "background:#000;overflow:hidden';"
+                        + "(document.body||document.documentElement).appendChild(host);}"
+                        + "var frame=document.getElementById('supjav-native-frame');"
+                        + "if(!frame){frame=document.createElement('iframe');"
+                        + "frame.id='supjav-native-frame';"
+                        + "frame.style.cssText='width:100%;height:100%;border:0;display:block';"
+                        + "frame.allow='autoplay;fullscreen;picture-in-picture';"
+                        + "frame.allowFullscreen=true;host.appendChild(frame);}"
+                        + "if(frame.src!==output) frame.src=output;"
+                        + "return 'frame:'+strategy;}"
+                        + "try {button.click();return 'site-click';}"
+                        + "catch(e){return 'click-failed';}"
+                        + "})()";
                 view.evaluateJavascript(script, result ->
                         DiagnosticLog.event("SUPJAV_WEB", "SELECTED_SERVER",
-                                "index=" + index + " result=" + result));
+                                "index=" + index + " state=" + result));
             }
 
             @Override
@@ -132,8 +172,18 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
                                                      final WebResourceRequest request) {
                 final Uri destination = request.getUrl();
                 final String scheme = destination.getScheme();
-                return !"https".equalsIgnoreCase(scheme)
-                        && !"about".equalsIgnoreCase(scheme);
+                if (!"https".equalsIgnoreCase(scheme)
+                        && !"about".equalsIgnoreCase(scheme)) return true;
+                if (request.isForMainFrame()) {
+                    final String host = destination.getHost();
+                    final String domain = host == null ? "" :
+                            host.toLowerCase(java.util.Locale.ROOT);
+                    // External player hosts remain allowed in selected iframes.
+                    // Block unrelated main-frame redirects and advertising.
+                    return !("supjav.com".equals(domain)
+                            || "www.supjav.com".equals(domain));
+                }
+                return false;
             }
         });
         browser.setWebChromeClient(new WebChromeClient() {
