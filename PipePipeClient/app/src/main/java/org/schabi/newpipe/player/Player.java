@@ -702,8 +702,27 @@ public final class Player implements
     private void initListeners() {
         binding.qualityTextView.setOnClickListener(
                 new QualityClickListener(this, qualityPopupMenu));
-        binding.playbackSpeed.setOnClickListener(
-                new PlaybackSpeedClickListener(this, playbackSpeedPopupMenu));
+        binding.playbackSpeed.setOnClickListener(v -> {
+            if (supjavHlsEngine == null) {
+                new PlaybackSpeedClickListener(this, playbackSpeedPopupMenu).onClick(v);
+                return;
+            }
+            final PopupMenu menu = new PopupMenu(context, binding.playbackSpeed);
+            final float[] speeds = {.75f, 1f, 1.25f, 1.5f, 2f};
+            for (int i = 0; i < speeds.length; i++) {
+                final float chosen = speeds[i];
+                menu.getMenu().add(0, i, i,
+                        String.format(java.util.Locale.ROOT, "%s×", chosen));
+            }
+            menu.setOnMenuItemClickListener(item -> {
+                final float value = speeds[item.getItemId()];
+                supjavHlsEngine.command("speed(" + value + ")");
+                binding.playbackSpeed.setText(String.format(java.util.Locale.ROOT,
+                        "%s×", value));
+                return true;
+            });
+            menu.show();
+        });
 
         binding.playbackSeekBar.setOnSeekBarChangeListener(this);
         binding.captionTextView.setOnClickListener(this);
@@ -1923,6 +1942,9 @@ public final class Player implements
     private void onUpdateProgress(final int currentProgress,
                                   final int duration,
                                   final int bufferPercent) {
+        // In browser HLS mode the engine reports real video-element time.
+        // Do not overwrite that progress with the paused ExoPlayer clock.
+        if (supjavHlsEngine != null) return;
         if (!isPrepared) {
             return;
         }
