@@ -4280,7 +4280,7 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
             for (int i = 0; i < availableStreams.size(); i++) {
                 final VideoStream videoStream = availableStreams.get(i);
                 qualityPopupMenu.getMenu().add(POPUP_MENU_ID_QUALITY, i, Menu.NONE,
-                        videoStream.getCodec().toUpperCase().split("\\\\.")[0]
+                        videoStream.getCodec().toUpperCase().split("\\.")[0]
                                 + " " + videoStream.resolution);
             }
         }
