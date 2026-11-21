@@ -147,6 +147,53 @@ final class SupjavServerResolver {
         for (final String url : Parser.media(page, true)) {
             add(out, url, label, page.location());
         }
+        // EarnVids/LuluStream/FST may declare signed HLS URLs under
+        // hls2/hls4/hls3 instead of a normal <video> element.
+        final java.util.regex.Pattern signedHls = java.util.regex.Pattern.compile(
+                "(?i)(?:[\\\"']?)(hls[234])(?:[\\\"']?)\\\\s*:\\\\s*[\\\"']([^\\\"'<>]{8,3000})[\\\"']");
+        final java.util.Map<String, String> hls = new LinkedHashMap<>();
+        for (final Element script : page.select("script:not([src])")) {
+            final String content = script.data().isEmpty() ? script.html() : script.data();
+            final java.util.regex.Matcher found = signedHls.matcher(content);
+            while (found.find()) {
+                final String tag = found.group(1).toLowerCase(java.util.Locale.ROOT);
+                try {
+                    final String raw = found.group(2).replace("\\\\/", "/");
+                    final String url = URI.create(page.location()).resolve(raw).toString();
+                    if (safePublicHttps(url) && isMedia(url)) hls.putIfAbsent(tag, url);
+                } catch (final Exception ignored) { }
+            }
+        }
+        for (final String tag : new String[]{"hls2", "hls4", "hls3"}) {
+            final String url = hls.get(tag);
+            if (url != null) add(out, url, label, page.location());
+        }
+        // VOE publishes the stream in a ROT13 + Base64 JSON declaration.
+        for (final Element script : page.select("script[type=application/json]")) {
+            try {
+                final org.json.JSONArray values = new org.json.JSONArray(script.data());
+                final String encoded = values.optString(0);
+                if (encoded.length() < 10 || encoded.length() > 30000) continue;
+                String clean = encoded;
+                for (final String noise : new String[]{"@$", "^^", "~@", "%?", "*~", "!!", "#&", "_"}) {
+                    clean = clean.replace(noise, "");
+                }
+                final StringBuilder rotated = new StringBuilder();
+                for (final char c : clean.toCharArray()) {
+                    if (c >= 'a' && c <= 'z') rotated.append((char) ('a' + (c - 'a' + 13) % 26));
+                    else if (c >= 'A' && c <= 'Z') rotated.append((char) ('A' + (c - 'A' + 13) % 26));
+                    else rotated.append(c);
+                }
+                final String shifted = new String(java.util.Base64.getDecoder()
+                        .decode(rotated.toString()), java.nio.charset.StandardCharsets.US_ASCII);
+                final StringBuilder normal = new StringBuilder();
+                for (final char c : shifted.toCharArray()) normal.append((char) (c - 3));
+                final String decoded = new String(java.util.Base64.getDecoder()
+                        .decode(normal.reverse().toString()), java.nio.charset.StandardCharsets.UTF_8);
+                final String video = new org.json.JSONObject(decoded).optString("source");
+                add(out, video, label, page.location());
+            } catch (final Exception ignored) { }
+        }
     }
 
     private static void add(final Map<String, VideoStream> out,
@@ -198,7 +245,8 @@ final class SupjavServerResolver {
     private static boolean isMedia(final String url) {
         final String lower = URI.create(url).getPath().toLowerCase(java.util.Locale.ROOT);
         return lower.endsWith(".m3u8") || lower.endsWith(".m3u")
-                || lower.endsWith(".mp4");
+                || lower.endsWith(".mp4")
+                || lower.matches(".*/hls[0-9]*/(?:master|index|playlist)[^/]*\\\\.txt");
     }
 
     private static boolean safePublicHttps(final String link) {
