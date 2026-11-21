@@ -1092,14 +1092,32 @@ public final class VideoDetailFragment
                             && SupjavServerCatalog.selectedIndex(url) >= 0 && isAdded()) {
                         DiagnosticLog.error("SUPJAV", "SELECTED_SERVER_FAILED", throwable,
                                 "serverIndex=" + SupjavServerCatalog.selectedIndex(url));
+                        // Preserve the selected line. A CDN rejection is not
+                        // a decoding error, and repeating the same 403 request
+                        // cannot make the current signed URL playable.
+                        Throwable rootCause = throwable;
+                        for (int depth = 0; depth < 8
+                                && rootCause.getCause() != null; depth++) {
+                            rootCause = rootCause.getCause();
+                        }
+                        final String details = rootCause.getMessage() == null
+                                ? "" : rootCause.getMessage();
+                        final boolean media403 = details.contains("get-referer=403")
+                                || details.contains("access refused (HTTP 403)");
+                        final String errorSummary = media403
+                                ? "The selected media server refused all native HTTP "
+                                        + "request profiles (403). This is not a codec error. "
+                                        + "Try its website player, or choose another source."
+                                : "The selected source could not be resolved natively. "
+                                        + "Try its website player or choose another source.";
                         new AlertDialog.Builder(requireContext())
                                 .setTitle("Supjav server unavailable")
-                                .setMessage("This source may require browser playback. "
-                                        + "Choose another server or open the original site.")
-                                .setPositiveButton("Other servers",
+                                .setMessage(errorSummary)
+                                .setPositiveButton("Web player (selected server)",
+                                        (dialog, which) ->
+                                                SupjavWebPlayerActivity.open(requireContext(), url))
+                                .setNeutralButton("Other servers",
                                         (dialog, which) -> showSupjavServerPicker())
-                                .setNeutralButton("Open website", (dialog, which) ->
-                                        SupjavWebPlayerActivity.open(requireContext(), url))
                                 .setNegativeButton(android.R.string.cancel, null)
                                 .show();
                     }
