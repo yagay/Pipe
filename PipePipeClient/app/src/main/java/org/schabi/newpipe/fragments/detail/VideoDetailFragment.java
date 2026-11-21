@@ -1791,30 +1791,32 @@ public final class VideoDetailFragment
                         return;
                     }
                     final String activePart = activeSupjavPart(entries, activeSupjavUrl());
-                    final int selectedPosition = Math.max(0, parts.indexOf(activePart));
-                    new AlertDialog.Builder(requireContext())
-                            .setTitle("Choose CD")
-                            .setSingleChoiceItems(parts.toArray(new String[0]), selectedPosition,
-                                    (dialog, position) -> {
-                                        dialog.dismiss();
-                                        final String requested = parts.get(position);
-                                        if (requested.equals(activePart)) return;
-                                        final SupjavServerCatalog.Entry previous =
-                                                SupjavServerCatalog.entryForIndex(entries,
-                                                        SupjavServerCatalog.selectedIndex(
-                                                                activeSupjavUrl()));
-                                        final String provider = previous == null
-                                                ? null : previous.provider;
-                                        final SupjavServerCatalog.Entry target =
-                                                SupjavServerCatalog.preferredForPart(
-                                                        entries, requested, provider);
-                                        if (target != null) {
-                                            navigateToSupjavServer(detailUrl, target,
-                                                    activePart);
-                                        }
-                                    })
-                            .setNegativeButton(android.R.string.cancel, null)
-                            .show();
+                    final int selectedPosition = parts.indexOf(activePart);
+                    if (player == null || !player.showSupjavCdMenu(
+                            parts, selectedPosition, position -> {
+                                if (!isAdded() || position < 0 || position >= parts.size()
+                                        || !SupjavServerCatalog.pageUrl(detailUrl).equals(
+                                                SupjavServerCatalog.pageUrl(activeSupjavUrl()))) {
+                                    return;
+                                }
+                                final String requested = parts.get(position);
+                                if (requested.equals(activePart)) return;
+                                final SupjavServerCatalog.Entry previous =
+                                        SupjavServerCatalog.entryForIndex(entries,
+                                                SupjavServerCatalog.selectedIndex(
+                                                        activeSupjavUrl()));
+                                final String provider = previous == null
+                                        ? null : previous.provider;
+                                final SupjavServerCatalog.Entry target =
+                                        SupjavServerCatalog.preferredForPart(
+                                                entries, requested, provider);
+                                if (target != null) {
+                                    navigateToSupjavServer(detailUrl, target, activePart);
+                                }
+                            })) {
+                        Toast.makeText(requireContext(),
+                                "Open the player to choose a CD", Toast.LENGTH_SHORT).show();
+                    }
                 }, error -> {
                     DiagnosticLog.error("SUPJAV", "CD_CATALOG_FAILED", error, "CD picker");
                     if (isAdded()) {
@@ -1837,30 +1839,32 @@ public final class VideoDetailFragment
                     final List<SupjavServerCatalog.Entry> servers =
                             SupjavServerCatalog.serversForPart(entries, part);
                     if (servers.isEmpty()) {
-                        new AlertDialog.Builder(requireContext())
-                                .setTitle("Supjav")
-                                .setMessage("No servers for " + part)
-                                .setPositiveButton(android.R.string.ok, null).show();
+                        Toast.makeText(requireContext(),
+                                "No servers for " + part, Toast.LENGTH_SHORT).show();
                         return;
                     }
-                    final String[] names = new String[servers.size()];
+                    final List<String> names = new ArrayList<>(servers.size());
                     int checked = -1;
                     final int selectedIndex = SupjavServerCatalog.selectedIndex(
                             activeSupjavUrl());
                     for (int i = 0; i < servers.size(); i++) {
-                        names[i] = servers.get(i).provider;
+                        names.add(servers.get(i).provider);
                         if (servers.get(i).index == selectedIndex) checked = i;
                     }
-                    new AlertDialog.Builder(requireContext())
-                            .setTitle("Server · " + part)
-                            .setSingleChoiceItems(names, checked,
-                                    (dialog, position) -> {
-                                        dialog.dismiss();
-                                        navigateToSupjavServer(detailUrl,
-                                                servers.get(position), part);
-                                    })
-                            .setNegativeButton(android.R.string.cancel, null)
-                            .show();
+                    if (player == null || !player.showSupjavServerMenu(
+                            names, checked, position -> {
+                                if (!isAdded() || position < 0 || position >= servers.size()
+                                        || !SupjavServerCatalog.pageUrl(detailUrl).equals(
+                                                SupjavServerCatalog.pageUrl(activeSupjavUrl()))) {
+                                    return;
+                                }
+                                navigateToSupjavServer(detailUrl,
+                                        servers.get(position), part);
+                            })) {
+                        Toast.makeText(requireContext(),
+                                "Open the player to choose a server",
+                                Toast.LENGTH_SHORT).show();
+                    }
                 }, error -> {
                     DiagnosticLog.error("SUPJAV", "CATALOG_FAILED", error, "server picker");
                     if (isAdded()) {

@@ -342,6 +342,9 @@ public final class Player implements
 
     private boolean isSomePopupMenuVisible = false;
     private PopupMenu qualityPopupMenu;
+    // Same anchored dropdown appearance and lifecycle as the quality selector.
+    private PopupMenu supjavCdPopupMenu;
+    private PopupMenu supjavServerPopupMenu;
     private static final int POPUP_MENU_ID_ADAPTIVE_VIDEO = 72;
 
     /** Resolved Media3 HLS/DASH renditions, not placeholder source labels. */
@@ -4555,6 +4558,63 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
         qualityPopupMenu.setOnDismissListener(this);
     }
 
+    /**
+     * CD and server lists use exactly the same themed, anchor-attached
+     * PopupMenu as the resolution selector. The detail fragment owns the
+     * Supjav catalog and the actual source-switching transaction.
+     */
+    public boolean showSupjavCdMenu(@NonNull final List<String> labels,
+                                    final int checkedIndex,
+                                    @NonNull final java.util.function.IntConsumer onSelect) {
+        return showSupjavOptionMenu(true, labels, checkedIndex, onSelect);
+    }
+
+    public boolean showSupjavServerMenu(@NonNull final List<String> labels,
+                                        final int checkedIndex,
+                                        @NonNull final java.util.function.IntConsumer onSelect) {
+        return showSupjavOptionMenu(false, labels, checkedIndex, onSelect);
+    }
+
+    private boolean showSupjavOptionMenu(final boolean cd,
+                                         @NonNull final List<String> labels,
+                                         final int checkedIndex,
+                                         @NonNull final java.util.function.IntConsumer onSelect) {
+        if (binding == null || labels.isEmpty()) {
+            return false;
+        }
+        final View anchor = cd ? binding.supjavCdTextView : binding.supjavServerTextView;
+        if (!anchor.isAttachedToWindow() || anchor.getVisibility() != View.VISIBLE) {
+            return false;
+        }
+        closeAllPopupMenus();
+        // Catalog lookup may have taken longer than the normal control-hide timer.
+        showControls(0);
+        final PopupMenu popup = new PopupMenu(
+                new ContextThemeWrapper(context, R.style.DarkPopupMenu), anchor);
+        final int groupId = cd ? 73 : 74;
+        for (int index = 0; index < labels.size(); index++) {
+            popup.getMenu().add(groupId, index, Menu.NONE, labels.get(index))
+                    .setCheckable(true).setChecked(index == checkedIndex);
+        }
+        popup.getMenu().setGroupCheckable(groupId, true, true);
+        popup.setOnMenuItemClickListener(item -> {
+            final int chosen = item.getItemId();
+            if (chosen >= 0 && chosen < labels.size() && chosen != checkedIndex) {
+                onSelect.accept(chosen);
+            }
+            return true;
+        });
+        popup.setOnDismissListener(this);
+        if (cd) {
+            supjavCdPopupMenu = popup;
+        } else {
+            supjavServerPopupMenu = popup;
+        }
+        popup.show();
+        isSomePopupMenuVisible = true;
+        return true;
+    }
+
     private void buildPlaybackSpeedMenu() {
         if (playbackSpeedPopupMenu == null) {
             return;
@@ -4720,6 +4780,11 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
      */
     @Override
     public void onDismiss(@Nullable final PopupMenu menu) {
+        if (menu != null && menu == supjavCdPopupMenu) {
+            supjavCdPopupMenu = null;
+        } else if (menu != null && menu == supjavServerPopupMenu) {
+            supjavServerPopupMenu = null;
+        }
         if (DEBUG) {
             Log.d(TAG, "onDismiss() called with: menu = [" + menu + "]");
         }
@@ -4748,6 +4813,14 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
     }
 
     private void closeAllPopupMenus() {
+        if (supjavCdPopupMenu != null) {
+            supjavCdPopupMenu.dismiss();
+            supjavCdPopupMenu = null;
+        }
+        if (supjavServerPopupMenu != null) {
+            supjavServerPopupMenu.dismiss();
+            supjavServerPopupMenu = null;
+        }
         if (qualityPopupMenu != null) {
             qualityPopupMenu.dismiss();
         }
