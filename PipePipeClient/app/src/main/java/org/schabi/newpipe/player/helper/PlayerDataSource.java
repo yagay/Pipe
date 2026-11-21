@@ -398,6 +398,37 @@ public class PlayerDataSource {
                 .setContinueLoadingCheckIntervalBytes(continueLoadingCheckIntervalBytes);
     }
 
+    public HlsMediaSource.Factory getSupjavHlsMediaSourceFactory(
+            @Nullable final String pageReferer) {
+        return new HlsMediaSource.Factory(supjavDataSourceFactory(pageReferer))
+                .setAllowChunklessPreparation(true);
+    }
+
+    public ProgressiveMediaSource.Factory getSupjavProgressiveMediaSourceFactory(
+            @Nullable final String pageReferer) {
+        return new ProgressiveMediaSource.Factory(supjavDataSourceFactory(pageReferer))
+                .setContinueLoadingCheckIntervalBytes(continueLoadingCheckIntervalBytes);
+    }
+
+    private DataSource.Factory supjavDataSourceFactory(@Nullable final String pageReferer) {
+        final String ref = pageReferer != null && pageReferer.startsWith("https://")
+                ? pageReferer : "https://supjav.com/";
+        final Map<String, String> headers = new HashMap<>();
+        headers.put("Referer", ref);
+        headers.put("Accept", "*/*");
+        final android.net.Uri parsed = android.net.Uri.parse(ref);
+        if (parsed.getScheme() != null && parsed.getHost() != null) {
+            headers.put("Origin", parsed.getScheme() + "://" + parsed.getHost());
+        }
+        return new PurifiedDataSource.Factory(context,
+                new OkHttpDataSource.Factory(DownloaderImpl.getInstance().getClient())
+                        .setUserAgent("Mozilla/5.0 (Linux; Android 15; Mobile) "
+                                + "AppleWebKit/537.36 (KHTML, like Gecko) "
+                                + "Chrome/131.0.0.0 Mobile Safari/537.36")
+                        .setDefaultRequestProperties(headers))
+                .setTransferListener(transferListener);
+    }
+
     public HlsMediaSource.Factory getSpankBangHlsMediaSourceFactory(
             @Nullable final String pageReferer) {
         return new HlsMediaSource.Factory(spankBangDataSourceFactory(pageReferer))
