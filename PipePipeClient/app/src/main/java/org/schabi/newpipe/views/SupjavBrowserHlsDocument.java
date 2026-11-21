@@ -35,14 +35,49 @@ public final class SupjavBrowserHlsDocument {
                   'use strict';
                   var url=atob('__MEDIA_BASE64__');
                   var video=document.getElementById('video');
-                  var hls=null,ready=false,qualityIndex=-1;
+                  var hls=null,manifestParsed=false,qualityIndex=-1;
+                  var decodedData=false,renderedFrame=false,explicitPause=false;
+                  var autoplayBlocked=false,automaticAttempts=0,failed=false;
                   function report(code){console.log('PIPE_HLS:'+code);}
-                  function fail(code){report('ERROR:'+code);}
+                  function fail(code){
+                    if(failed||decodedData)return;
+                    failed=true;report('ERROR:'+code);
+                  }
+                  function requestPlay(reason,manual){
+                    if(manual){
+                      explicitPause=false;autoplayBlocked=false;
+                    }else{
+                      if(explicitPause||autoplayBlocked||automaticAttempts>=2)return;
+                      automaticAttempts++;
+                    }
+                    report('PLAY_ATTEMPT:'+reason);
+                    try{
+                      var promise=video.play();
+                      if(promise&&typeof promise.catch==='function'){
+                        promise.catch(function(error){
+                          var name=error&&error.name||'UnknownError';
+                          name=String(name).replace(/[^A-Za-z]/g,'').slice(0,32);
+                          report('PLAY_REJECTED:'+name);
+                          if(name==='NotAllowedError'){
+                            autoplayBlocked=true;
+                            report('AUTOPLAY_RESTRICTED');
+                          }else if(!manual&&decodedData&&!explicitPause&&
+                              automaticAttempts<2){
+                            setTimeout(function(){requestPlay('after-rejection',false);},250);
+                          }
+                        });
+                      }
+                    }catch(e){
+                      report('PLAY_REJECTED:SyncException');
+                    }
+                  }
                   window.PipeHls={
-                    play:function(){video.play().catch(function(){});},
-                    pause:function(){video.pause();},
-                    toggle:function(){if(video.paused)video.play().catch(function(){});
-                      else video.pause();},
+                    play:function(){requestPlay('manual',true);},
+                    pause:function(){explicitPause=true;video.pause();},
+                    toggle:function(){
+                      if(video.paused)requestPlay('manual',true);
+                      else{explicitPause=true;video.pause();}
+                    },
                     seek:function(delta){if(isFinite(video.duration)){
                       video.currentTime=Math.max(0,Math.min(video.duration,
                         video.currentTime+Number(delta)));}},
@@ -65,14 +100,12 @@ public final class SupjavBrowserHlsDocument {
                       this.quality(qualityIndex>=hls.levels.length-1?-1:qualityIndex+1);
                     }
                   };
-                  // The "play" event is only a play REQUEST; the video may be
-                  // stalled on its first segment with no rendered frame.
-                  // Keep Pipe buffering until decoded video data actually exists.
-                  var firstFrame=false;
+                  // Three different stages: manifest, decoded data, actual
+                  // playback. A video play request is NOT a rendered frame.
                   function frameReady(source){
-                    if(firstFrame)return;
+                    if(renderedFrame)return;
                     if(video.videoWidth>0&&video.videoHeight>0){
-                      firstFrame=true;
+                      renderedFrame=true;
                       report('FIRST_FRAME:'+video.videoWidth+':'+video.videoHeight+':'+source);
                     }
                   }
@@ -80,14 +113,28 @@ public final class SupjavBrowserHlsDocument {
                     report('METADATA:'+video.videoWidth+':'+video.videoHeight);
                   });
                   video.addEventListener('loadeddata',function(){
-                    report('READY');frameReady('loadeddata');
+                    decodedData=true;
+                    report('READY');
+                    report('DECODED_DATA:'+video.videoWidth+':'+video.videoHeight);
+                    if(video.paused&&!explicitPause&&!autoplayBlocked&&automaticAttempts<2){
+                      setTimeout(function(){
+                        if(video.paused)requestPlay('decoded-data',false);
+                      },250);
+                    }
                   });
                   video.addEventListener('playing',function(){
-                    report('PLAYING');frameReady('playing');
+                    report('PLAYING');
                     if(typeof video.requestVideoFrameCallback==='function'){
                       video.requestVideoFrameCallback(function(){frameReady('callback');});
                     }
                   });
+                  video.addEventListener('timeupdate',function(){
+                    if(!video.paused&&video.currentTime>0&&
+                       typeof video.requestVideoFrameCallback!=='function'){
+                      frameReady('timeupdate');
+                    }
+                  });
+                  video.addEventListener('pause',function(){report('PAUSED');});
                   video.addEventListener('waiting',function(){report('WAITING');});
                   video.addEventListener('stalled',function(){report('STALLED');});
                   video.addEventListener('ended',function(){report('ENDED');});
@@ -131,7 +178,7 @@ public final class SupjavBrowserHlsDocument {
                       }
                     });
                     hls.on(Hls.Events.MANIFEST_PARSED,function(){
-                      ready=true;report('MANIFEST_PARSED');
+                      manifestParsed=true;report('MANIFEST_PARSED');
                       // Select the HIGHEST variant actually present in THIS
                       // server's manifest. No fixed 1080p/4K assumptions and
                       // no automatic lowering when its bandwidth is slow.
@@ -170,7 +217,7 @@ public final class SupjavBrowserHlsDocument {
                         report('QUALITY:源画质');
                         report('NETWORK_DIAG:NO_VARIANT_LEVELS');
                       }
-                      video.play().catch(function(){report('AUTOPLAY_RESTRICTED');});
+                      requestPlay('manifest',false);
                     });
                     hls.on(Hls.Events.ERROR,function(event,error){
                       if(!error)return;
@@ -200,27 +247,33 @@ public final class SupjavBrowserHlsDocument {
                   }else if(video.canPlayType('application/vnd.apple.mpegurl')){
                     video.src=url;
                     video.addEventListener('loadedmetadata',function(){
-                      ready=true;report('MANIFEST_PARSED');
-                      video.play().catch(function(){report('AUTOPLAY_RESTRICTED');});
+                      manifestParsed=true;report('MANIFEST_PARSED');
+                      requestPlay('native-hls',false);
                     });
                   }else{fail('hlsjs-unavailable');}
-                  setTimeout(function(){if(!ready)fail('manifest-timeout');},14000);
                   setTimeout(function(){
-                    if(!firstFrame && hls && !firstFragmentLoaded){
-                      report('NETWORK_DIAG:STARTUP_NO_FRAGMENT');
-                      // Retry the same signed URL once through HLS.js; never
-                      // invent alternate media URLs or infinite retry loops.
-                      hls.startLoad();
+                    if(!manifestParsed)fail('manifest-timeout');
+                  },20000);
+                  // The diagnostic showed the first decoded frame arrived
+                  // ~26 seconds after the manifest; a 12s startLoad can
+                  // restart a valid in-flight fragment, and an 18/30s fatal
+                  // deadline races the CDN. Log stalls; let HLS.js finish.
+                  setTimeout(function(){
+                    if(!decodedData){
+                      report('NETWORK_DIAG:STARTUP_25S_NO_DATA_FRAG_'
+                        +Number(typeof firstFragmentLoaded!=='undefined'&&firstFragmentLoaded));
                     }
-                  },12000);
+                  },25000);
                   setTimeout(function(){
-                    if(!firstFrame && video.readyState<2){
+                    if(!decodedData){
                       report('NETWORK_DIAG:VIDEO_STATE_'+video.readyState
-                        +'_FRAG_'+Number(firstFragmentLoaded)
-                        +'_BUFFERED_'+Number(firstFragmentBuffered));
-                      fail('no-decoded-video-after-30s');
+                        +'_FRAG_'+Number(typeof firstFragmentLoaded!=='undefined'&&firstFragmentLoaded)
+                        +'_BUFFERED_'+Number(typeof firstFragmentBuffered!=='undefined'&&firstFragmentBuffered));
+                      fail('no-decoded-data-after-75s');
+                    }else if(video.paused){
+                      report('READY_BUT_PAUSED');
                     }
-                  },30000);
+                  },75000);
                 })();
                 </script></body></html>
                 """.replace("__MEDIA_BASE64__", encoded);
