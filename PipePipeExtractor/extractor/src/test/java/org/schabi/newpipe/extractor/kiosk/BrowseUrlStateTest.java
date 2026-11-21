@@ -78,4 +78,28 @@ public final class BrowseUrlStateTest {
                 BASE + "?sort=views&filters=individual",
                 BASE + "?sort=views", BrowseUrlState.OptionGroup.SORT));
     }
+    @Test
+    public void preservesActiveOptionsOnNextPage() {
+        assertEquals(BASE + "?page=2&sort=views&filters=individual",
+                BrowseUrlState.carryOptionsToNextPage(
+                        BASE + "?sort=views&filters=individual",
+                        BASE + "?page=2"));
+    }
+
+    @Test
+    public void paginationDoesNotOverwriteSiteProvidedOption() {
+        assertEquals(BASE + "?page=2&sort=recent&filters=individual",
+                BrowseUrlState.carryOptionsToNextPage(
+                        BASE + "?sort=views&filters=individual",
+                        BASE + "?page=2&sort=recent"));
+    }
+
+    @Test
+    public void paginationNeverLeaksOptionsAcrossCategories() {
+        assertEquals("https://site.example/categories/other?page=2",
+                BrowseUrlState.carryOptionsToNextPage(
+                        BASE + "?filters=individual",
+                        "https://site.example/categories/other?page=2"));
+    }
+
 }
