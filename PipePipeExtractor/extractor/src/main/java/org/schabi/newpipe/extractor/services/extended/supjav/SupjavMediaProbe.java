@@ -23,9 +23,15 @@ final class SupjavMediaProbe {
     static final class Assessment {
         final Status status;
         final String profiles;
+        final boolean includeOrigin;
         Assessment(final Status status, final String profiles) {
+            this(status, profiles, true);
+        }
+        Assessment(final Status status, final String profiles,
+                   final boolean includeOrigin) {
             this.status = status;
             this.profiles = profiles;
+            this.includeOrigin = includeOrigin;
         }
     }
 
@@ -90,9 +96,12 @@ final class SupjavMediaProbe {
 
         // A small subset of players require Referer but explicitly reject Origin.
         final ProbeResult fallback = checkHls(url, headers(ref, null, false));
+        // The standalone Supjav app passes the successful probe profile to
+        // Media3. A working referer-only request must not gain Origin again
+        // when Media3 loads the manifest and its segments.
         return new Assessment(fallback.status, "range-origin=" + first.code
                 + " get-origin=" + normal.code + " get-referer=" + fallback.code
-                + " " + fallback.reason);
+                + " " + fallback.reason, false);
     }
 
     private static ProbeResult checkHls(final String url,
