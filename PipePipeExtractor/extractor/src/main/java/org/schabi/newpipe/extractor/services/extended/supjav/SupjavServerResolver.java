@@ -136,12 +136,19 @@ final class SupjavServerResolver {
         final List<VideoStream> unknown = new ArrayList<>();
         int confirmedBlocked = 0;
         int probes = 0;
+        final List<String> probeDetails = new ArrayList<>();
         for (final VideoStream candidate : candidates.values()) {
-            final SupjavMediaProbe.Status result = probes++ < MAX_PROBES
-                    ? SupjavMediaProbe.probe(candidate) : SupjavMediaProbe.Status.UNKNOWN;
-            if (result == SupjavMediaProbe.Status.PLAYABLE) {
+            final SupjavMediaProbe.Assessment check = probes++ < MAX_PROBES
+                    ? SupjavMediaProbe.assess(candidate)
+                    : new SupjavMediaProbe.Assessment(
+                            SupjavMediaProbe.Status.UNKNOWN, "not-probed");
+            // These diagnostics omit full URLs and tokens by design.
+            if (probeDetails.size() < 8) {
+                probeDetails.add(check.status.name() + "(" + check.profiles + ")");
+            }
+            if (check.status == SupjavMediaProbe.Status.PLAYABLE) {
                 playable.add(candidate);
-            } else if (result == SupjavMediaProbe.Status.BLOCKED) {
+            } else if (check.status == SupjavMediaProbe.Status.BLOCKED) {
                 confirmedBlocked++;
             } else {
                 unknown.add(candidate);
@@ -153,7 +160,9 @@ final class SupjavServerResolver {
                     : confirmedBlocked > 0 ? "media returned HTTP error or invalid response"
                     : lastHttp == 403 || lastHttp == 429 ? "access refused (HTTP " + lastHttp + ")"
                     : "requires JavaScript or browser player";
-            throw new ParsingException("Supjav " + selected.label() + ": " + reason);
+            throw new ParsingException("Supjav " + selected.label() + ": " + reason
+                    + "; candidates=" + candidates.size()
+                    + "; checks=" + String.join(", ", probeDetails));
         }
         return playable;
     }
