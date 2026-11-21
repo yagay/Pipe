@@ -13,6 +13,7 @@ import androidx.fragment.app.Fragment
 import com.jakewharton.rxbinding4.view.clicks
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
 import io.reactivex.rxjava3.disposables.Disposable
+import org.schabi.newpipe.diagnostics.DiagnosticLog
 import org.schabi.newpipe.MainActivity
 import org.schabi.newpipe.R
 import org.schabi.newpipe.extractor.NewPipe
@@ -76,6 +77,8 @@ class ErrorPanelHelper(
     }
 
     fun showError(errorInfo: ErrorInfo) {
+        DiagnosticLog.error("UI_EXTRACTOR", "PANEL_ERROR", errorInfo.throwable,
+            "service=" + ServiceHelper.getSelectedServiceId(context) + " context=error-panel")
 
         if (errorInfo.throwable != null && errorInfo.throwable!!.isInterruptedCaused) {
             if (DEBUG) {
@@ -150,6 +153,7 @@ class ErrorPanelHelper(
     }
 
     fun showTextError(errorString: String) {
+        DiagnosticLog.event("UI_EXTRACTOR", "TEXT_ERROR", errorString)
         ensureDefaultVisibility()
 
         errorTextView.text = errorString
