@@ -35,6 +35,7 @@ public final class SupjavHlsEngine {
         void onPosition(long positionMs, long durationMs, boolean paused);
         void onQuality(String label);
         void onQualityLevels(java.util.List<Integer> heights);
+        void onReady();
         void onPlaying();
         void onEnded();
         void onFailure(String reason);
@@ -272,7 +273,10 @@ public final class SupjavHlsEngine {
                     listener.onQualityLevels(heights);
                 } else if (state.startsWith("QUALITY:")) {
                     listener.onQuality(state.substring(8));
-                } else if ("READY".equals(state) || "PLAYING".equals(state)) {
+                } else if ("READY".equals(state)) {
+                    ready = true;
+                    listener.onReady();
+                } else if ("PLAYING".equals(state)) {
                     ready = true;
                     listener.onPlaying();
                     if (resolver != null) resolver.onPause();
