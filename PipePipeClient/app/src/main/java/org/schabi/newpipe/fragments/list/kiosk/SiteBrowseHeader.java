@@ -12,6 +12,7 @@ import androidx.annotation.NonNull;
 
 import org.schabi.newpipe.R;
 import org.schabi.newpipe.extractor.kiosk.SiteBrowseCatalog;
+import org.schabi.newpipe.extractor.kiosk.BrowseUrlState;
 import org.schabi.newpipe.extractor.StreamingService;
 
 import java.util.List;
@@ -126,11 +127,16 @@ final class SiteBrowseHeader {
         int selected = -1;
         for (int i = 0; i < items.size(); i++) {
             labels[i] = items.get(i).getLabel();
-            if (items.get(i).getId().equals(activeId)
-                    || (items.get(i).getId().startsWith("filter:")
-                        && activeId.equals("category:" + items.get(i).getUrl()))
-                    || (items.get(i).getId().startsWith("sort:")
-                        && activeId.equals("category:" + items.get(i).getUrl()))) {
+            final SiteBrowseCatalog.Entry entry = items.get(i);
+            final BrowseUrlState.OptionGroup group =
+                    entry.getId().startsWith("sort:")
+                            ? BrowseUrlState.OptionGroup.SORT
+                            : entry.getId().startsWith("filter:")
+                            ? BrowseUrlState.OptionGroup.FILTER : null;
+            if (group != null ? BrowseUrlState.selected(pageUrl, entry.getUrl(), group)
+                    : (entry.getId().equals(activeId)
+                        || (activeId.startsWith("category:")
+                            && BrowseUrlState.sameCategory(pageUrl, entry.getUrl())))) {
                 selected = i;
             }
         }
@@ -153,8 +159,7 @@ final class SiteBrowseHeader {
             String selectedName = "Categories ▾";
             for (final SiteBrowseCatalog.Entry item : categories) {
                 if (activeId.startsWith("category:")
-                        && item.getUrl().split("[?#]", 2)[0]
-                            .equals(activeId.substring("category:".length()).split("[?#]", 2)[0])) {
+                        && BrowseUrlState.sameCategory(pageUrl, item.getUrl())) {
                     selectedName = item.getLabel() + " ▾";
                     break;
                 }
@@ -186,7 +191,8 @@ final class SiteBrowseHeader {
         if (!sorts.isEmpty()) {
             String sortTitle = "Sort ▾";
             for (final SiteBrowseCatalog.Entry sort : sorts) {
-                if (activeId.equals("category:" + sort.getUrl())) {
+                if (BrowseUrlState.selected(pageUrl, sort.getUrl(),
+                        BrowseUrlState.OptionGroup.SORT)) {
                     sortTitle = sort.getLabel() + " ▾";
                     break;
                 }
@@ -196,7 +202,15 @@ final class SiteBrowseHeader {
             sortButton.setOnClickListener(v -> showOptions("Sort", sorts));
         }
         if (!filters.isEmpty()) {
-            final TextView filterButton = makeOptionButton("Filter ▾");
+            String filterTitle = "Filter ▾";
+            for (final SiteBrowseCatalog.Entry filter : filters) {
+                if (BrowseUrlState.selected(pageUrl, filter.getUrl(),
+                        BrowseUrlState.OptionGroup.FILTER)) {
+                    filterTitle = filter.getLabel() + " ▾";
+                    break;
+                }
+            }
+            final TextView filterButton = makeOptionButton(filterTitle);
             categoriesToolbar.addView(filterButton);
             filterButton.setOnClickListener(v -> showOptions("Filter", filters));
         }

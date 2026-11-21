@@ -35,15 +35,27 @@ import java.util.List;
  * Site-specific providers can later implement extra categories and filters.
  */
 public final class SiteBrowseCatalog {
+    public enum EntryType {
+        KIOSK, VIDEO_CATEGORY, SORT, FILTER
+    }
+
     public static final class Entry {
+        private final EntryType type;
         private final String id;
         private final String label;
         private final String url;
 
         public Entry(final String id, final String label, final String url) {
+            this.type = id.startsWith("category:") ? EntryType.VIDEO_CATEGORY
+                    : id.startsWith("sort:") ? EntryType.SORT
+                    : id.startsWith("filter:") ? EntryType.FILTER : EntryType.KIOSK;
             this.id = id;
             this.label = label;
             this.url = url;
+        }
+
+        public EntryType getType() {
+            return type;
         }
 
         public String getId() {
@@ -111,9 +123,15 @@ public final class SiteBrowseCatalog {
 
     public static synchronized void invalidateCategories(final StreamingService service) {
         CATEGORY_CACHE.remove(service.getServiceId());
-        PAGE_CACHE.clear();
+        synchronized (PAGE_CACHE) {
+            PAGE_CACHE.entrySet().removeIf(entry ->
+                    sameSite(service.getBaseUrl(), entry.getKey()));
+        }
     }
-    private static final Map<Integer, CategoryCache> CATEGORY_CACHE = new HashMap<>();
+    private static final Map<Integer, CategoryCache> CATEGORY_CACHE =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.concurrent.ConcurrentHashMap<Integer, Object> CATEGORY_LOCKS =
+            new java.util.concurrent.ConcurrentHashMap<>();
     private static final Set<String> HTML_SITES = new HashSet<>(java.util.Arrays.asList(
             "KissJAV", "85po", "Pornhub", "JAV-NONI", "JAVSB", "TOKYO Motion",
             "SpankBang", "xHamster", "XVideos", "EPORNER", "MRDOUGA",
@@ -220,7 +238,9 @@ public final class SiteBrowseCatalog {
                     : uri.getHost().toLowerCase(Locale.ROOT).replaceFirst("^www\\.", "");
             // Country-specific subdomain aliases are permitted for Pornhub.
             return host.equals(other)
-                    || (host.endsWith("pornhub.com") && other.matches("(?:[a-z]{2}|www)\\.pornhub\\.com"));
+                    || ((host.equals("pornhub.com") || host.endsWith(".pornhub.com"))
+                        && (other.equals("pornhub.com")
+                            || other.matches("[a-z]{2}\\.pornhub\\.com")));
         } catch (final URISyntaxException | NullPointerException ignored) {
             return false;
         }
@@ -230,12 +250,13 @@ public final class SiteBrowseCatalog {
      * Discover category links from a website's HTML, never guessed paths.
      * One categories index may be fetched if linked from the home page.
      */
-    public static synchronized List<Entry> getWebsiteCategories(final StreamingService service)
+    public static List<Entry> getWebsiteCategories(final StreamingService service)
             throws IOException, ExtractionException {
         if (!supportsHtmlCategories(service)) {
             return Collections.emptyList();
         }
         final int key = service.getServiceId();
+        synchronized (CATEGORY_LOCKS.computeIfAbsent(key, ignored -> new Object())) {
         final CategoryCache previous = CATEGORY_CACHE.get(key);
         if (previous != null
                 && System.currentTimeMillis() - previous.updated < CATEGORY_TTL_MS) {
@@ -291,6 +312,7 @@ public final class SiteBrowseCatalog {
                 return previous.entries;
             }
             throw e;
+        }
         }
     }
 

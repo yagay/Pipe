@@ -22,6 +22,7 @@ import org.schabi.newpipe.extractor.services.missav.MissAvService;
 import org.schabi.newpipe.util.NavigationHelper;
 import org.schabi.newpipe.extractor.kiosk.KioskInfo;
 import org.schabi.newpipe.extractor.kiosk.SiteBrowseCatalog;
+import org.schabi.newpipe.extractor.kiosk.BrowseUrlState;
 import org.schabi.newpipe.extractor.linkhandler.ListLinkHandlerFactory;
 import org.schabi.newpipe.extractor.localization.ContentCountry;
 import org.schabi.newpipe.extractor.stream.StreamInfoItem;
@@ -111,6 +112,7 @@ public class KioskFragment extends BaseListInfoFragment<StreamInfoItem, KioskInf
     public void onSaveInstanceState(@NonNull final Bundle outState) {
         super.onSaveInstanceState(outState);
         outState.putString("kioskId", kioskId);
+        outState.putString("kioskTranslatedName", kioskTranslatedName);
         outState.putSerializable("contentCountry", contentCountry);
     }
 
@@ -118,6 +120,7 @@ public class KioskFragment extends BaseListInfoFragment<StreamInfoItem, KioskInf
     protected void onRestoreInstanceState(@NonNull final Bundle savedInstanceState) {
         super.onRestoreInstanceState(savedInstanceState);
         kioskId = savedInstanceState.getString("kioskId", "");
+        kioskTranslatedName = savedInstanceState.getString("kioskTranslatedName");
         contentCountry = (ContentCountry) savedInstanceState.getSerializable("contentCountry");
     }
 
@@ -193,11 +196,27 @@ public class KioskFragment extends BaseListInfoFragment<StreamInfoItem, KioskInf
                         if (entry.getId().equals(kioskId)) {
                             return;
                         }
-                        if (entry.getId().startsWith("category:")
-                                || entry.getId().startsWith("sort:")
-                                || entry.getId().startsWith("filter:")) {
-                            NavigationHelper.openSiteCategoryFragment(getFM(), serviceId,
-                                    entry.getUrl(), entry.getLabel());
+                        if (entry.getType() != SiteBrowseCatalog.EntryType.KIOSK) {
+                            String destination = entry.getUrl();
+                            if (entry.getType() == SiteBrowseCatalog.EntryType.SORT
+                                    || entry.getType() == SiteBrowseCatalog.EntryType.FILTER) {
+                                try {
+                                    destination = BrowseUrlState.applyOption(url, entry.getUrl(),
+                                            entry.getType() == SiteBrowseCatalog.EntryType.SORT
+                                                    ? BrowseUrlState.OptionGroup.SORT
+                                                    : BrowseUrlState.OptionGroup.FILTER);
+                                } catch (final IllegalArgumentException invalidOption) {
+                                    showSnackBarError(new ErrorInfo(invalidOption,
+                                            UserAction.UI_ERROR, "Invalid site filter"));
+                                    return;
+                                }
+                            }
+                            if (!destination.equals(url)) {
+                                NavigationHelper.openSiteCategoryFragment(getFM(), serviceId,
+                                        destination,
+                                        entry.getType() == SiteBrowseCatalog.EntryType.VIDEO_CATEGORY
+                                                ? entry.getLabel() : kioskTranslatedName);
+                            }
                             return;
                         }
                         try {

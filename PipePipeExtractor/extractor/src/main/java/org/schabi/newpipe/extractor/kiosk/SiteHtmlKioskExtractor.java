@@ -99,6 +99,15 @@ public final class SiteHtmlKioskExtractor extends KioskExtractor<StreamInfoItem>
                 || next.getUrl().equalsIgnoreCase(page.baseUri()))) {
             next = null;
         }
+        if (next != null) {
+            final String target = BrowseUrlState.carryOptionsToNextPage(
+                    page.location(), next.getUrl());
+            if (SiteBrowseCatalog.isWebsiteBrowseUrl(getService(), target)) {
+                next = new Page(target);
+            } else {
+                next = null;
+            }
+        }
         return new InfoItemsPage<>(items, next);
     }
 
