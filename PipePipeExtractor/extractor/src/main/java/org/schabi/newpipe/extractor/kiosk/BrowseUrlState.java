@@ -102,11 +102,28 @@ public final class BrowseUrlState {
     /** True if applying this option would not change the current browser state. */
     public static boolean selected(final String current, final String option,
                                    final OptionGroup group) {
-        try {
-            return applyOption(current, option, group).equals(current);
-        } catch (final IllegalArgumentException ignored) {
+        if (!samePath(current, option)) {
             return false;
         }
+        try {
+            final List<String> active = groupParts(new URI(current).getRawQuery(), group);
+            final List<String> candidate = groupParts(new URI(option).getRawQuery(), group);
+            Collections.sort(active);
+            Collections.sort(candidate);
+            return active.equals(candidate);
+        } catch (final URISyntaxException ignored) {
+            return false;
+        }
+    }
+
+    private static List<String> groupParts(final String query, final OptionGroup group) {
+        final List<String> result = new ArrayList<>();
+        for (final String part : parts(query)) {
+            if (group.contains(key(part))) {
+                result.add(part);
+            }
+        }
+        return result;
     }
 
     private static List<String> parts(final String query) {
