@@ -4,6 +4,18 @@
     android:key="general_preferences"
     android:title="@string/settings_category_debug_title">
 
+    <Preference
+        android:key="pipe_export_diagnostics"
+        android:title="Export diagnostic ZIP"
+        android:summary="Share recent errors, playback, site and network diagnostics"
+        app:iconSpaceReserved="false" />
+
+    <Preference
+        android:key="pipe_clear_diagnostics"
+        android:title="Clear diagnostic history"
+        android:summary="Delete stored diagnostic events on this device"
+        app:iconSpaceReserved="false" />
+
     <SwitchPreferenceCompat
         android:defaultValue="false"
         android:key="@string/allow_heap_dumping_key"
