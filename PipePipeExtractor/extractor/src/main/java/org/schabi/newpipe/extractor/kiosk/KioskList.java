@@ -133,6 +133,23 @@ public class KioskList {
                                             final Page nextPage,
                                             final Localization localization)
             throws ExtractionException, IOException {
+        // Website category pages are not registered as top-level kiosk IDs.
+        // Use the site's native stream URL validator within a shared list
+        // extractor rather than treating an arbitrary HTML page as Latest.
+        if (SiteBrowseCatalog.isWebsiteBrowseUrl(service, url)) {
+            final org.schabi.newpipe.extractor.linkhandler.ListLinkHandler handler =
+                    new org.schabi.newpipe.extractor.linkhandler.ListLinkHandler(
+                            url, url, "category", java.util.Collections.emptyList(), null);
+            final SiteHtmlKioskExtractor extractor =
+                    new SiteHtmlKioskExtractor(service, handler);
+            if (forcedLocalization != null) {
+                extractor.forceLocalization(forcedLocalization);
+            }
+            if (forcedContentCountry != null) {
+                extractor.forceContentCountry(forcedContentCountry);
+            }
+            return extractor;
+        }
         for (final Map.Entry<String, KioskEntry> e : kioskList.entrySet()) {
             final KioskEntry ke = e.getValue();
             if (ke.handlerFactory.acceptUrl(url)) {

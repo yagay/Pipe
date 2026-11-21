@@ -1,6 +1,11 @@
 package org.schabi.newpipe.extractor.services.javsb;
 
 import org.schabi.newpipe.extractor.StreamingService;
+import org.schabi.newpipe.extractor.Page;
+import org.schabi.newpipe.extractor.localization.Localization;
+import org.schabi.newpipe.extractor.kiosk.KioskExtractor;
+import org.schabi.newpipe.extractor.kiosk.SiteBrowseCatalog;
+import java.io.IOException;
 import org.schabi.newpipe.extractor.bulletComments.BulletCommentsExtractor;
 import org.schabi.newpipe.extractor.channel.ChannelExtractor;
 import org.schabi.newpipe.extractor.channel.ChannelTabExtractor;
@@ -78,7 +83,19 @@ public final class JavSbService extends StreamingService {
 
     @Override
     public KioskList getKioskList() throws ExtractionException {
-        final KioskList list = new KioskList(this);
+        final KioskList list = new KioskList(this) {
+            @Override
+            public KioskExtractor getExtractorByUrl(final String url, final Page page,
+                                                      final Localization localization)
+                    throws ExtractionException, IOException {
+                if (SiteBrowseCatalog.isWebsiteBrowseUrl(JavSbService.this, url)) {
+                    final ListLinkHandler handler = new ListLinkHandler(url, url, "category",
+                            Collections.emptyList(), null);
+                    return new JavSbKioskExtractor(JavSbService.this, handler, "category");
+                }
+                return super.getExtractorByUrl(url, page, localization);
+            }
+        };
         try {
             for (final String id : new String[] {"latest", "popular", "recommended"}) {
                 list.addKioskEntry((service, url, kioskId) -> new JavSbKioskExtractor(

@@ -34,6 +34,10 @@ final class SiteBrowseHeader {
     private final CompositeDisposable disposable = new CompositeDisposable();
     private final Consumer<SiteBrowseCatalog.Entry> navigate;
     private final String activeId;
+    private final StreamingService service;
+    private final String pageUrl;
+    private boolean categoryFailed;
+    private List<SiteBrowseCatalog.Entry> filters = Collections.emptyList();
     private final int padding;
     private List<SiteBrowseCatalog.Entry> categories = Collections.emptyList();
     private List<SiteBrowseCatalog.Entry> sorts = Collections.emptyList();
@@ -49,14 +53,16 @@ final class SiteBrowseHeader {
         categoriesToolbar = view.findViewById(R.id.site_category_toolbar);
         navigate = navigation;
         activeId = selectedKioskId;
+        this.service = service;
+        pageUrl = currentUrl;
         padding = (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP,
                 12, view.getResources().getDisplayMetrics());
         render(entries);
-        if (service instanceof org.schabi.newpipe.extractor.services.kissjav.KissJavService
-                || service instanceof org.schabi.newpipe.extractor.services.eightyfivepo.EightyFivePoService) {
+        if (SiteBrowseCatalog.supportsHtmlCategories(service)) {
             loadCategories(service);
             if (selectedKioskId.startsWith("category:")) {
                 loadSorts(service, currentUrl);
+                loadFilters(service, currentUrl);
             }
         }
     }
@@ -66,11 +72,18 @@ final class SiteBrowseHeader {
                 .subscribeOn(Schedulers.io())
                 .observeOn(AndroidSchedulers.mainThread())
                 .subscribe(result -> {
-                    if (root.isAttachedToWindow() && !result.isEmpty()) {
+                    if (root.isAttachedToWindow()) {
                         categories = result;
+                        categoryFailed = false;
                         renderCategories();
                     }
-                }, error -> android.util.Log.w("SiteBrowse", "Category list unavailable", error)));
+                }, error -> {
+                    android.util.Log.w("SiteBrowse", "Category list unavailable", error);
+                    if (root.isAttachedToWindow()) {
+                        categoryFailed = true;
+                        renderCategories();
+                    }
+                }));
     }
 
     private void loadSorts(final StreamingService service, final String pageUrl) {
@@ -84,6 +97,19 @@ final class SiteBrowseHeader {
                         renderCategories();
                     }
                 }, error -> android.util.Log.w("SiteBrowse", "Sort list unavailable", error)));
+    }
+
+    private void loadFilters(final StreamingService service, final String pageUrl) {
+        disposable.add(Single.fromCallable(() ->
+                        SiteBrowseCatalog.getWebsiteFilters(service, pageUrl))
+                .subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(result -> {
+                    if (root.isAttachedToWindow()) {
+                        filters = result;
+                        renderCategories();
+                    }
+                }, error -> android.util.Log.w("SiteBrowse", "Filter list unavailable", error)));
     }
 
     private TextView makeOptionButton(final String label) {
@@ -101,6 +127,8 @@ final class SiteBrowseHeader {
         for (int i = 0; i < items.size(); i++) {
             labels[i] = items.get(i).getLabel();
             if (items.get(i).getId().equals(activeId)
+                    || (items.get(i).getId().startsWith("filter:")
+                        && activeId.equals("category:" + items.get(i).getUrl()))
                     || (items.get(i).getId().startsWith("sort:")
                         && activeId.equals("category:" + items.get(i).getUrl()))) {
                 selected = i;
@@ -118,29 +146,43 @@ final class SiteBrowseHeader {
 
     private void renderCategories() {
         categoriesToolbar.removeAllViews();
-        final TextView choose = new TextView(root.getContext());
-        choose.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-        choose.setPadding(padding, padding / 2, padding, padding / 2);
-        String selectedName = "Categories ▾";
-        for (final SiteBrowseCatalog.Entry item : categories) {
-            if (activeId.startsWith("category:")
-                    && item.getUrl().split("[?#]", 2)[0]
-                        .equals(activeId.substring("category:".length()).split("[?#]", 2)[0])) {
-                selectedName = item.getLabel() + " ▾";
-                break;
+        if (!categories.isEmpty()) {
+            final TextView choose = new TextView(root.getContext());
+            choose.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+            choose.setPadding(padding, padding / 2, padding, padding / 2);
+            String selectedName = "Categories ▾";
+            for (final SiteBrowseCatalog.Entry item : categories) {
+                if (activeId.startsWith("category:")
+                        && item.getUrl().split("[?#]", 2)[0]
+                            .equals(activeId.substring("category:".length()).split("[?#]", 2)[0])) {
+                    selectedName = item.getLabel() + " ▾";
+                    break;
+                }
             }
+            choose.setText(selectedName);
+            choose.setSingleLine(true);
+            choose.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            choose.setTypeface(null, Typeface.BOLD);
+            choose.setClickable(true);
+            categoriesToolbar.addView(choose, new LinearLayout.LayoutParams(
+                    0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            categoriesToolbar.setVisibility(View.VISIBLE);
+            root.findViewById(R.id.site_browse_container).setVisibility(View.VISIBLE);
+            choose.setOnClickListener(v -> {
+                if (!categories.isEmpty()) {
+                    showOptions("Categories", categories);
+                }
+            });
         }
-        choose.setText(selectedName);
-        choose.setTypeface(null, Typeface.BOLD);
-        choose.setClickable(true);
-        categoriesToolbar.addView(choose);
-        categoriesToolbar.setVisibility(View.VISIBLE);
-        root.findViewById(R.id.site_browse_container).setVisibility(View.VISIBLE);
-        choose.setOnClickListener(v -> {
-            if (!categories.isEmpty()) {
-                showOptions("Categories", categories);
-            }
-        });
+        if (categoryFailed) {
+            final TextView retry = makeOptionButton("Retry categories");
+            categoriesToolbar.addView(retry);
+            retry.setOnClickListener(v -> {
+                categoryFailed = false;
+                SiteBrowseCatalog.invalidateCategories(service);
+                loadCategories(service);
+            });
+        }
         if (!sorts.isEmpty()) {
             String sortTitle = "Sort ▾";
             for (final SiteBrowseCatalog.Entry sort : sorts) {
@@ -152,6 +194,17 @@ final class SiteBrowseHeader {
             final TextView sortButton = makeOptionButton(sortTitle);
             categoriesToolbar.addView(sortButton);
             sortButton.setOnClickListener(v -> showOptions("Sort", sorts));
+        }
+        if (!filters.isEmpty()) {
+            final TextView filterButton = makeOptionButton("Filter ▾");
+            categoriesToolbar.addView(filterButton);
+            filterButton.setOnClickListener(v -> showOptions("Filter", filters));
+        }
+        final boolean hasOptions = !categories.isEmpty() || !sorts.isEmpty()
+                || !filters.isEmpty() || categoryFailed;
+        categoriesToolbar.setVisibility(hasOptions ? View.VISIBLE : View.GONE);
+        if (hasOptions) {
+            root.findViewById(R.id.site_browse_container).setVisibility(View.VISIBLE);
         }
     }
 
