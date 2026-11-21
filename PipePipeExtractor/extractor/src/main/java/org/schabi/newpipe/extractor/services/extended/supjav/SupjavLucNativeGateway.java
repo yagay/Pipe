@@ -197,7 +197,7 @@ final class SupjavLucNativeGateway {
                             .setDeliveryMethod(candidate.getDeliveryMethod())
                             .setIsVideoOnly(candidate.isVideoOnly())
                             .build();
-                    return Collections.singletonList(verified);
+                    return SupjavQualityResolver.annotate(Collections.singletonList(verified));
                 }
                 if (attempted >= MAX_CANDIDATES || System.nanoTime() >= deadline) break;
             }
