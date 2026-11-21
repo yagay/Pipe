@@ -550,6 +550,7 @@ public final class Player implements
         binding.getRoot().setVisibility(View.VISIBLE);
         binding.supjavHlsSurface.setVisibility(View.VISIBLE);
         binding.playbackControlRoot.setVisibility(View.VISIBLE);
+        binding.loadingPanelWrapper.setVisibility(View.VISIBLE);
         binding.playerOverlays.setVisibility(View.GONE);
         binding.surfaceView.setVisibility(View.GONE);
         binding.playbackSeekBar.setMax(1000);
@@ -587,9 +588,11 @@ public final class Player implements
                     }
                     @Override public void onPlaying() {
                         supjavHlsPaused = false;
+                        binding.loadingPanelWrapper.setVisibility(View.GONE);
                         binding.playbackControlRoot.setVisibility(View.VISIBLE);
                     }
                     @Override public void onFailure(final String reason) {
+                        binding.loadingPanelWrapper.setVisibility(View.GONE);
                         DiagnosticLog.event("SUPJAV_ENGINE", "UNAVAILABLE", "reason=" + reason);
                         android.widget.Toast.makeText(context,
                                 "This server cannot play in Pipe", android.widget.Toast.LENGTH_LONG)
@@ -612,6 +615,7 @@ public final class Player implements
         supjavHlsPaused = true;
         if (binding != null) {
             binding.supjavHlsSurface.setVisibility(View.GONE);
+            binding.loadingPanelWrapper.setVisibility(View.GONE);
             binding.surfaceView.setVisibility(View.VISIBLE);
         }
     }
