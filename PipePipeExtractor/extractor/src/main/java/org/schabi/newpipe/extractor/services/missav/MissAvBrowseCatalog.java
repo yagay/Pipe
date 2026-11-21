@@ -63,6 +63,8 @@ public final class MissAvBrowseCatalog {
 
     public static synchronized void invalidateCategories() {
         lastCategoryLoad = 0;
+        MissAvParsingHelper.invalidateDocument(
+                MissAvParsingHelper.BASE_URL + "/" + MissAvParsingHelper.DEFAULT_LANGUAGE);
     }
 
     private static String key(final String label) {
