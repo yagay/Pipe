@@ -138,6 +138,8 @@ public final class VideoDetailFragment
 
     public static final String ACTION_SHOW_MAIN_PLAYER =
             App.PACKAGE_NAME + ".VideoDetailFragment.ACTION_SHOW_MAIN_PLAYER";
+    public static final String ACTION_SUPJAV_SERVER_PICKER =
+            App.PACKAGE_NAME + ".VideoDetailFragment.ACTION_SUPJAV_SERVER_PICKER";
     public static final String ACTION_HIDE_MAIN_PLAYER =
             App.PACKAGE_NAME + ".VideoDetailFragment.ACTION_HIDE_MAIN_PLAYER";
     public static final String ACTION_PLAYER_STARTED =
@@ -1870,6 +1872,11 @@ public final class VideoDetailFragment
                     case ACTION_SHOW_MAIN_PLAYER:
                         bottomSheetBehavior.setState(BottomSheetBehavior.STATE_EXPANDED);
                         break;
+                    case ACTION_SUPJAV_SERVER_PICKER:
+                        if (serviceId == ServiceList.Supjav.getServiceId()) {
+                            showSupjavServerPicker();
+                        }
+                        break;
                     case ACTION_HIDE_MAIN_PLAYER:
                         bottomSheetBehavior.setState(BottomSheetBehavior.STATE_HIDDEN);
                         break;
@@ -1904,6 +1911,7 @@ public final class VideoDetailFragment
         };
         final IntentFilter intentFilter = new IntentFilter();
         intentFilter.addAction(ACTION_SHOW_MAIN_PLAYER);
+        intentFilter.addAction(ACTION_SUPJAV_SERVER_PICKER);
         intentFilter.addAction(ACTION_HIDE_MAIN_PLAYER);
         intentFilter.addAction(ACTION_PLAYER_STARTED);
         intentFilter.addAction(ACTION_ENTER_FULLSCREEN);
