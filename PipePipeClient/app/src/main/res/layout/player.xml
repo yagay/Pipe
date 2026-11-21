@@ -419,6 +419,45 @@
 
             </LinearLayout>
 
+            <!-- Supjav sources use the SAME Pipe player controls. CD tabs and
+                 server selection live above the original bottom toolbar, rather
+                 than introducing a second player or shrinking the seekbar. -->
+            <LinearLayout
+                android:id="@+id/supjavSourceControls"
+                android:layout_width="wrap_content"
+                android:layout_height="38dp"
+                android:layout_alignParentEnd="true"
+                android:layout_above="@id/bottomControls"
+                android:layout_marginEnd="8dp"
+                android:layout_marginBottom="2dp"
+                android:background="#77000000"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:id="@+id/supjavCdButtons"
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal" />
+
+                <org.schabi.newpipe.views.NewPipeTextView
+                    android:id="@+id/supjavServerButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:minWidth="70dp"
+                    android:paddingStart="8dp"
+                    android:paddingEnd="8dp"
+                    android:text="线路 ▾"
+                    android:textColor="@android:color/white"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
             <LinearLayout
                 android:id="@+id/bottomSeekbarPreviewLayout"
                 android:layout_width="match_parent"
