@@ -1,6 +1,17 @@
 package org.schabi.newpipe.extractor.kiosk;
 
 import org.schabi.newpipe.extractor.StreamingService;
+import org.schabi.newpipe.extractor.services.kissjav.KissJavService;
+import org.schabi.newpipe.extractor.services.kissjav.KissJavParsingHelper;
+import org.schabi.newpipe.extractor.services.eightyfivepo.EightyFivePoService;
+import org.schabi.newpipe.extractor.services.eightyfivepo.EightyFivePoParsingHelper;
+import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
+import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.schabi.newpipe.extractor.exceptions.ExtractionException;
 import org.schabi.newpipe.extractor.linkhandler.ListLinkHandlerFactory;
 
@@ -69,6 +80,58 @@ public final class SiteBrowseCatalog {
             }
         }
         return Collections.unmodifiableList(result);
+    }
+
+    /**
+     * Website categories are supported only where the existing video-card
+     * extractor can parse category listing pages. Do not expose directory pages
+     * or off-site links as playable categories.
+     */
+    public static List<Entry> getWebsiteCategories(final StreamingService service)
+            throws IOException, ExtractionException {
+        final String base;
+        final String index;
+        final Document document;
+        if (service instanceof KissJavService) {
+            base = KissJavParsingHelper.BASE_URL;
+            index = base + "/categories/";
+            document = KissJavParsingHelper.fetchDocument(index);
+        } else if (service instanceof EightyFivePoService) {
+            base = EightyFivePoParsingHelper.BASE_URL;
+            index = base + "/ja/";
+            document = EightyFivePoParsingHelper.fetchDocument(index);
+        } else {
+            return Collections.emptyList();
+        }
+
+        final Map<String, Entry> entries = new LinkedHashMap<>();
+        for (final Element link : document.select("a[href]")) {
+            final String rawUrl = link.absUrl("href");
+            final String label = link.text().trim();
+            if (label.length() < 2 || label.length() > 45) {
+                continue;
+            }
+            final String path;
+            try {
+                final URI uri = new URI(rawUrl);
+                final URI host = new URI(base);
+                if (!"https".equalsIgnoreCase(uri.getScheme())
+                        || !host.getHost().equalsIgnoreCase(uri.getHost())) {
+                    continue;
+                }
+                path = uri.getPath();
+            } catch (final URISyntaxException ignored) {
+                continue;
+            }
+            if (path == null || !path.matches(service instanceof KissJavService
+                    ? "/categories/[^/]+/?"
+                    : "/ja/categories/[^/]+/?")) {
+                continue;
+            }
+            final String url = rawUrl.split("[?#]", 2)[0];
+            entries.putIfAbsent(url, new Entry("category:" + url, label, url));
+        }
+        return Collections.unmodifiableList(new ArrayList<>(entries.values()));
     }
 
     private static int order(final String id) {
