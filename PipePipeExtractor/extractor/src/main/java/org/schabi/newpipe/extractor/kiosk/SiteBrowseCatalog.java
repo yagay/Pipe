@@ -182,9 +182,11 @@ public final class SiteBrowseCatalog {
                 if (count == 3 && root.equals("category")
                         && (parts[off + 1].equals("cast")
                             || parts[off + 1].equals("maker"))) return true;
+                // Count is relative to the optional language prefix. Index by
+                // the full path so /en/category/foo/page/2 works as well.
                 return count >= 4 && count <= 5
-                        && parts[count - 2].equals("page")
-                        && parts[count - 1].matches("[0-9]+");
+                        && parts[parts.length - 2].equals("page")
+                        && parts[parts.length - 1].matches("[0-9]+");
             }
             // Pornhub's category navigation uses /video?c=<id>. Do not
             // accidentally accept a regular video detail or search page.
@@ -345,6 +347,8 @@ public final class SiteBrowseCatalog {
             throws IOException, ExtractionException {
         final Map<String, Entry> found = new LinkedHashMap<>();
         int succeeded = 0;
+        // These are directory *indexes*, not preselected categories. Only
+        // advertise real destinations linked by the site's HTML.
         final String[] directories = {
                 "/", "/category/", "/tag/", "/cast/", "/maker/",
                 "/category/cast/", "/category/maker/"
@@ -356,7 +360,17 @@ public final class SiteBrowseCatalog {
                 for (final Element anchor : page.select("a[href]")) {
                     final String url = anchor.absUrl("href");
                     if (!isWebsiteBrowseUrl(service, url)) continue;
-                    final String label = anchor.text().replaceAll("\\s+", " ").trim();
+                    String label = anchor.text().replaceAll("\\s+", " ").trim();
+                    // Image-only directory cards often have no anchor text.
+                    if (label.isEmpty()) {
+                        final Element image = anchor.selectFirst("img[alt]");
+                        if (image != null) label = image.attr("alt").trim();
+                    }
+                    if (label.isEmpty()) {
+                        final Element heading = anchor.selectFirst("[title],h2,h3,.title");
+                        if (heading != null) label = heading.hasAttr("title")
+                                ? heading.attr("title").trim() : heading.text().trim();
+                    }
                     if (label.length() < 2 || label.length() > 52) continue;
                     final String clean = url.split("#", 2)[0];
                     final String path = java.net.URI.create(clean).getPath().toLowerCase(Locale.ROOT);
