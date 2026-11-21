@@ -129,6 +129,8 @@ public final class SiteBrowseCatalog {
         }
     }
     private static final Map<Integer, CategoryCache> CATEGORY_CACHE = new HashMap<>();
+    private static final java.util.concurrent.ConcurrentHashMap<Integer, Object> CATEGORY_LOCKS =
+            new java.util.concurrent.ConcurrentHashMap<>();
     private static final Set<String> HTML_SITES = new HashSet<>(java.util.Arrays.asList(
             "KissJAV", "85po", "Pornhub", "JAV-NONI", "JAVSB", "TOKYO Motion",
             "SpankBang", "xHamster", "XVideos", "EPORNER", "MRDOUGA",
@@ -245,12 +247,13 @@ public final class SiteBrowseCatalog {
      * Discover category links from a website's HTML, never guessed paths.
      * One categories index may be fetched if linked from the home page.
      */
-    public static synchronized List<Entry> getWebsiteCategories(final StreamingService service)
+    public static List<Entry> getWebsiteCategories(final StreamingService service)
             throws IOException, ExtractionException {
         if (!supportsHtmlCategories(service)) {
             return Collections.emptyList();
         }
         final int key = service.getServiceId();
+        synchronized (CATEGORY_LOCKS.computeIfAbsent(key, ignored -> new Object())) {
         final CategoryCache previous = CATEGORY_CACHE.get(key);
         if (previous != null
                 && System.currentTimeMillis() - previous.updated < CATEGORY_TTL_MS) {
@@ -306,6 +309,7 @@ public final class SiteBrowseCatalog {
                 return previous.entries;
             }
             throw e;
+        }
         }
     }
 
