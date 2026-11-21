@@ -327,6 +327,11 @@ public final class SupjavHlsEngine {
                     DiagnosticLog.event("SUPJAV_ENGINE", "AUTOPLAY_RESTRICTED",
                             "manual play is available in the Pipe controls");
                     listener.onStatus("点击播放按钮继续");
+                } else if (state.startsWith("NETWORK_DIAG:")) {
+                    // Provider URLs are never reported. Codes are short,
+                    // predefined HLS.js error details and HTTP status only.
+                    DiagnosticLog.event("SUPJAV_ENGINE", "NETWORK_DIAG",
+                            "stage=" + state.substring("NETWORK_DIAG:".length()));
                 } else if ("BOOTSTRAP".equals(state) || "SCRIPT_LOADED".equals(state)
                         || "MANIFEST_PARSED".equals(state)
                         || state.startsWith("METADATA:")
@@ -381,9 +386,11 @@ public final class SupjavHlsEngine {
                 + " refHost=" + Uri.parse(referer).getHost());
         player.loadDataWithBaseURL(referer,
                 SupjavBrowserHlsDocument.render(manifest), "text/html", "UTF-8", null);
+        // JS reports missing fragments/frames at 30 seconds. The native
+        // deadline is longer so it does not wrongly abort slow first segments.
         main.postDelayed(() -> {
-            if (generation == active && !ready) fail("no-decoded-video-after-18s");
-        }, 18000);
+            if (generation == active && !ready) fail("no-decoded-video-after-35s");
+        }, 35000);
     }
 
     private void fail(final String reason) {
