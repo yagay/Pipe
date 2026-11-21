@@ -73,9 +73,23 @@ public final class SiteHtmlKioskExtractor extends KioskExtractor<StreamInfoItem>
             } catch (final ParsingException ignored) {
                 continue;
             }
-            final Element card = link.selectFirst("img") == null && link.parent() != null
-                    ? link.parent() : link;
-            final Element img = card.selectFirst("img[data-src],img[src],img[data-original]");
+            // Supjav cards often wrap the thumbnail and title in separate
+            // anchors inside one post. Resolve the common post container first,
+            // then fall back to the existing generic behaviour for other sites.
+            Element card = link;
+            if ("Supjav".equals(getService().getServiceInfo().getName())) {
+                final Element post = link.closest(
+                        "article,.post,.video-item,.video,.item,.thumb-item,li");
+                if (post != null) {
+                    card = post;
+                } else if (link.selectFirst("img") == null && link.parent() != null) {
+                    card = link.parent();
+                }
+            } else if (link.selectFirst("img") == null && link.parent() != null) {
+                card = link.parent();
+            }
+            final Element img = card.selectFirst(
+                    "img[data-src],img[data-original],img[data-lazy-src],img[src]");
             if (img == null) {
                 continue;
             }
@@ -95,6 +109,17 @@ public final class SiteHtmlKioskExtractor extends KioskExtractor<StreamInfoItem>
         }
 
         Page next = PageNavigation.nextPage(page);
+        // A few Supjav directory themes use a numbered pagination link
+        // without rel=next. Prefer the actual next link, never guess a URL.
+        if (next == null && "Supjav".equals(getService().getServiceInfo().getName())) {
+            final Element link = page.selectFirst(
+                    "a.next[href],a.nextpostslink[href],"
+                    + ".pagination a.next[href],a[rel=next][href]");
+            if (link != null && SiteBrowseCatalog.isWebsiteBrowseUrl(
+                    getService(), link.absUrl("href"))) {
+                next = new Page(link.absUrl("href"));
+            }
+        }
         if (next != null && (!SiteBrowseCatalog.isWebsiteBrowseUrl(getService(), next.getUrl())
                 || next.getUrl().equalsIgnoreCase(page.baseUri()))) {
             next = null;
@@ -140,11 +165,13 @@ public final class SiteHtmlKioskExtractor extends KioskExtractor<StreamInfoItem>
         }
         @Override public String getUrl() { return url; }
         @Override public String getThumbnailUrl() {
-            final Element img = card.selectFirst("img[data-src],img[data-original],img[src]");
+            final Element img = card.selectFirst(
+                    "img[data-src],img[data-original],img[data-lazy-src],img[src]");
             if (img == null) {
                 return "";
             }
-            for (final String attr : new String[]{"data-src", "data-original", "src"}) {
+            for (final String attr : new String[]{"data-original",
+                    "data-src", "data-lazy-src", "src"}) {
                 final String value = img.absUrl(attr);
                 if (!value.isEmpty()) {
                     return value;
