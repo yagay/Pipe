@@ -135,7 +135,7 @@ public final class SiteBrowseCatalog {
     private static final Set<String> HTML_SITES = new HashSet<>(java.util.Arrays.asList(
             "KissJAV", "85po", "Pornhub", "JAV-NONI", "JAVSB", "TOKYO Motion",
             "SpankBang", "xHamster", "XVideos", "EPORNER", "MRDOUGA",
-            "OHentai", "XNXX", "141tube", "Avgle.net", "Hanime1.me", "JAV-FUN.cc"));
+            "OHentai", "XNXX", "141tube", "Avgle.net", "Hanime1.me", "JAV-FUN.cc", "Supjav"));
 
     private static final class CategoryCache {
         final List<Entry> entries;
