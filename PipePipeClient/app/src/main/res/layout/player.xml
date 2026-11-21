@@ -219,23 +219,7 @@
                         tools:ignore="RtlHardcoded,RtlSymmetry"
                         tools:text="1x" />
 
-                    <androidx.appcompat.widget.AppCompatImageButton
-                        android:id="@+id/queueButton"
-                        android:layout_width="35dp"
-                        android:layout_height="35dp"
-                        android:layout_marginEnd="8dp"
-                        android:background="?attr/selectableItemBackgroundBorderless"
-                        android:clickable="true"
-                        android:focusable="true"
-                        android:paddingStart="3dp"
-                        android:paddingTop="5dp"
-                        android:paddingEnd="3dp"
-                        android:paddingBottom="3dp"
-                        android:scaleType="fitCenter"
-                        android:visibility="gone"
-                        app:srcCompat="@drawable/ic_list"
-                        app:tint="@color/white"
-                        tools:ignore="ContentDescription,RtlHardcoded" />
+                    
 
                     <androidx.appcompat.widget.AppCompatImageButton
                         android:id="@+id/segmentsButton"
@@ -529,6 +513,48 @@
                     tools:ignore="HardcodedText,RtlHardcoded,RtlSymmetry" />
 
                 <androidx.appcompat.widget.AppCompatImageButton
+                    android:id="@+id/playPreviousButton"
+                    android:layout_width="36dp"
+                    android:layout_height="40dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:padding="@dimen/player_main_buttons_padding"
+                    android:scaleType="fitCenter"
+                    android:contentDescription="@string/previous"
+                    android:visibility="gone"
+                    app:srcCompat="@drawable/ic_previous"
+                    app:tint="@color/white" />
+
+                <androidx.appcompat.widget.AppCompatImageButton
+                    android:id="@+id/playNextButton"
+                    android:layout_width="36dp"
+                    android:layout_height="40dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:padding="@dimen/player_main_buttons_padding"
+                    android:scaleType="fitCenter"
+                    android:contentDescription="@string/player_next_item"
+                    android:visibility="gone"
+                    app:srcCompat="@drawable/ic_next"
+                    app:tint="@color/white" />
+
+                <androidx.appcompat.widget.AppCompatImageButton
+                    android:id="@+id/queueButton"
+                    android:layout_width="36dp"
+                    android:layout_height="40dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:padding="@dimen/player_main_buttons_padding"
+                    android:scaleType="fitCenter"
+                    android:contentDescription="@string/title_activity_play_queue"
+                    android:visibility="gone"
+                    app:srcCompat="@drawable/ic_list"
+                    app:tint="@color/white" />
+
+                <androidx.appcompat.widget.AppCompatImageButton
                     android:id="@+id/screenRotationButton"
                     android:layout_width="40dp"
                     android:layout_height="40dp"
@@ -553,21 +579,9 @@
             android:layout_height="match_parent"
             android:gravity="center"
             android:orientation="horizontal"
-            android:weightSum="5.5">
+            android:weightSum="1">
 
-            <androidx.appcompat.widget.AppCompatImageButton
-                android:id="@+id/playPreviousButton"
-                android:layout_width="0dp"
-                android:layout_height="40dp"
-                android:layout_marginEnd="10dp"
-                android:layout_weight="1"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:clickable="true"
-                android:focusable="true"
-                android:scaleType="fitCenter"
-                app:srcCompat="@drawable/ic_previous"
-                app:tint="@color/white"
-                tools:ignore="ContentDescription" />
+            
 
 
             <androidx.appcompat.widget.AppCompatImageButton
@@ -581,19 +595,7 @@
                 app:tint="@color/white"
                 tools:ignore="ContentDescription" />
 
-            <androidx.appcompat.widget.AppCompatImageButton
-                android:id="@+id/playNextButton"
-                android:layout_width="0dp"
-                android:layout_height="40dp"
-                android:layout_marginStart="10dp"
-                android:layout_weight="1"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:clickable="true"
-                android:focusable="true"
-                android:scaleType="fitCenter"
-                app:srcCompat="@drawable/ic_next"
-                app:tint="@color/white"
-                tools:ignore="ContentDescription" />
+            
 
         </LinearLayout>
 
