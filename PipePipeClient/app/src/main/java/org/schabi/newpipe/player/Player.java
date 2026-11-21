@@ -692,6 +692,14 @@ public final class Player implements
                                 android.support.v4.media.session.PlaybackStateCompat.STATE_PAUSED);
                         notifyPlaybackUpdateToListeners();
                     }
+                    @Override public void onBuffering() {
+                        if (supjavHlsEngine == null) return;
+                        binding.loadingPanelWrapper.setVisibility(View.VISIBLE);
+                        currentState = STATE_BUFFERING;
+                        updateSupjavSession(
+                                android.support.v4.media.session.PlaybackStateCompat.STATE_BUFFERING);
+                        notifyPlaybackUpdateToListeners();
+                    }
                     @Override public void onPlaying() {
                         if (supjavHlsEngine == null) return;
                         supjavHlsPaused = false;
