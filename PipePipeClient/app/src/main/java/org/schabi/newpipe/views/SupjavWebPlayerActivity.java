@@ -52,6 +52,7 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
     private volatile String observedReferer;
     private WebView embeddedHls;
     private FrameLayout embeddedContainer;
+    private SupjavPlayerControls playerControls;
     private boolean embeddedReady;
     private boolean embeddedAttempted;
     private boolean mediaDiscoveryCompleted;
@@ -436,9 +437,26 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
                 final String code = message.message();
                 if (code == null || !code.startsWith("PIPE_HLS:")) return false;
                 final String state = code.substring("PIPE_HLS:".length());
-                // Never log media URLs, tokens, or script arguments.
-                DiagnosticLog.event("SUPJAV_HLS", "STATE", "state=" + state);
                 if (player != embeddedHls) return true;
+                if (state.startsWith("POSITION:")) {
+                    final String[] fields = state.substring("POSITION:".length()).split(":");
+                    if (fields.length == 3 && playerControls != null) {
+                        try {
+                            playerControls.updatePosition(
+                                    Double.parseDouble(fields[0]),
+                                    Double.parseDouble(fields[1]), "1".equals(fields[2]));
+                        } catch (final NumberFormatException ignored) { }
+                    }
+                    return true;
+                }
+                if (state.startsWith("QUALITY:")) {
+                    if (playerControls != null) {
+                        playerControls.setQualityLabel(state.substring("QUALITY:".length()));
+                    }
+                    return true;
+                }
+                // Never log signed URLs, tokens, script arguments or progress.
+                DiagnosticLog.event("SUPJAV_HLS", "STATE", "state=" + state);
                 if ("READY".equals(state)) {
                     embeddedReady = true;
                     mediaDiscoveryCompleted = true;
@@ -462,15 +480,22 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
         embeddedContainer.addView(player, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         embeddedContainer.bringToFront();
-        final TextView close = new TextView(this);
-        close.setText("‹  Website player");
-        close.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-        close.setTextColor(0xFFFFFFFF);
-        close.setBackgroundColor(0xCC111111);
-        close.setGravity(Gravity.CENTER);
-        close.setOnClickListener(v -> closeEmbeddedHls());
-        embeddedContainer.addView(close, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(48), Gravity.TOP));
+        playerControls = new SupjavPlayerControls(this, new SupjavPlayerControls.Actions() {
+            @Override public void close() { finish(); }
+            @Override public void playPause() { sendHlsCommand("toggle()"); }
+            @Override public void seek(final int seconds) {
+                sendHlsCommand("seek(" + seconds + ")");
+            }
+            @Override public void seekToFraction(final float fraction) {
+                sendHlsCommand("seekFraction(" + fraction + ")");
+            }
+            @Override public void setSpeed(final float speed) {
+                sendHlsCommand("speed(" + speed + ")");
+            }
+            @Override public void cycleQuality() { sendHlsCommand("cycleQuality()"); }
+        });
+        embeddedContainer.addView(playerControls, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         DiagnosticLog.event("SUPJAV_HLS", "START",
                 "mediaHost=" + Uri.parse(manifest).getHost()
                         + " refererHost=" + Uri.parse(referer).getHost()
@@ -485,12 +510,21 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
         }, 18000);
     }
 
+    private void sendHlsCommand(final String command) {
+        if (embeddedHls != null && embeddedReady) {
+            embeddedHls.evaluateJavascript(
+                    "(function(){if(window.PipeHls){window.PipeHls." + command + ";}})()",
+                    null);
+        }
+    }
+
     private void closeEmbeddedHls() {
         hlsHandler.removeCallbacksAndMessages(null);
         final WebView player = embeddedHls;
         final FrameLayout overlay = embeddedContainer;
         embeddedHls = null;
         embeddedContainer = null;
+        playerControls = null;
         embeddedReady = false;
         if (player != null) {
             player.onPause();
