@@ -40,8 +40,84 @@ final class SupjavProviderExtractor {
         if ("VAS".equals(server.provider)) {
             addVas(found, page, label);
         }
+        if ("EVS".equals(server.provider) || "LUC".equals(server.provider)) {
+            addRankedHls(found, page, label);
+        }
+        if ("VOE".equals(server.provider)) {
+            addVoeDeclared(found, page, label);
+            // VOE's signed player declaration is authoritative. Do not
+            // insert unrelated MP4 advert URLs ahead of the actual source.
+            if (!found.isEmpty()) return new ArrayList<>(found.values());
+        }
         addMedia(found, page, label);
         return new ArrayList<>(found.values());
+    }
+
+    /**
+     * EVS and Lulu declare signed manifest variants in player configuration.
+     * Use their actual URLs without modifying signatures, in the upstream
+     * priority order hls2, hls4, hls3 before any generic page candidates.
+     */
+    private static void addRankedHls(final Map<String, VideoStream> out,
+                                     final Document page, final String label) {
+        final Map<String, String> variants = new LinkedHashMap<>();
+        final java.util.regex.Pattern decl = java.util.regex.Pattern.compile(
+                "(?i)(?:^|[,{\\s])[\\\"']?(hls[234])[\\\"']?\\s*:\\s*"
+                        + "[\\\"']([^\\\"'<>]{1,3000})[\\\"']");
+        int scripts = 0;
+        for (final Element script : page.select("script:not([src])")) {
+            if (++scripts > 100) break;
+            final String raw = script.data().isEmpty() ? script.html() : script.data();
+            for (final String content : new String[]{raw, Parser.unpackPacker(raw)}) {
+                if (content == null || content.length() > 200000) continue;
+                final java.util.regex.Matcher entries = decl.matcher(content);
+                while (entries.find()) {
+                    final String tag = entries.group(1).toLowerCase(java.util.Locale.ROOT);
+                    if (variants.containsKey(tag)) continue;
+                    try {
+                        final String candidate = URI.create(page.location())
+                                .resolve(entries.group(2).replace("\\/", "/")).toString();
+                        if (safePublicHttps(candidate) && isMedia(candidate)) {
+                            variants.put(tag, candidate);
+                        }
+                    } catch (final Exception ignored) { }
+                }
+            }
+        }
+        for (final String key : new String[]{"hls2", "hls4", "hls3"}) {
+            final String candidate = variants.get(key);
+            if (candidate != null) add(out, candidate, label, page.location());
+        }
+    }
+
+    private static void addVoeDeclared(final Map<String, VideoStream> out,
+                                       final Document page, final String label) {
+        // VOE publishes the stream in a ROT13 + Base64 JSON declaration.
+        for (final Element script : page.select("script[type=application/json]")) {
+            try {
+                final org.json.JSONArray values = new org.json.JSONArray(script.data());
+                final String encoded = values.optString(0);
+                if (encoded.length() < 10 || encoded.length() > 30000) continue;
+                String clean = encoded;
+                for (final String noise : new String[]{"@$", "^^", "~@", "%?", "*~", "!!", "#&", "_"}) {
+                    clean = clean.replace(noise, "");
+                }
+                final StringBuilder rotated = new StringBuilder();
+                for (final char c : clean.toCharArray()) {
+                    if (c >= 'a' && c <= 'z') rotated.append((char) ('a' + (c - 'a' + 13) % 26));
+                    else if (c >= 'A' && c <= 'Z') rotated.append((char) ('A' + (c - 'A' + 13) % 26));
+                    else rotated.append(c);
+                }
+                final String shifted = new String(java.util.Base64.getDecoder()
+                        .decode(rotated.toString()), java.nio.charset.StandardCharsets.US_ASCII);
+                final StringBuilder normal = new StringBuilder();
+                for (final char c : shifted.toCharArray()) normal.append((char) (c - 3));
+                final String decoded = new String(java.util.Base64.getDecoder()
+                        .decode(normal.reverse().toString()), java.nio.charset.StandardCharsets.UTF_8);
+                final String video = new org.json.JSONObject(decoded).optString("source");
+                add(out, video, label, page.location());
+            } catch (final Exception ignored) { }
+        }
     }
 
     private static void addFst(final Map<String, VideoStream> found,
@@ -175,32 +251,7 @@ final class SupjavProviderExtractor {
             final String url = hls.get(tag);
             if (url != null) add(out, url, label, page.location());
         }
-        // VOE publishes the stream in a ROT13 + Base64 JSON declaration.
-        for (final Element script : page.select("script[type=application/json]")) {
-            try {
-                final org.json.JSONArray values = new org.json.JSONArray(script.data());
-                final String encoded = values.optString(0);
-                if (encoded.length() < 10 || encoded.length() > 30000) continue;
-                String clean = encoded;
-                for (final String noise : new String[]{"@$", "^^", "~@", "%?", "*~", "!!", "#&", "_"}) {
-                    clean = clean.replace(noise, "");
-                }
-                final StringBuilder rotated = new StringBuilder();
-                for (final char c : clean.toCharArray()) {
-                    if (c >= 'a' && c <= 'z') rotated.append((char) ('a' + (c - 'a' + 13) % 26));
-                    else if (c >= 'A' && c <= 'Z') rotated.append((char) ('A' + (c - 'A' + 13) % 26));
-                    else rotated.append(c);
-                }
-                final String shifted = new String(java.util.Base64.getDecoder()
-                        .decode(rotated.toString()), java.nio.charset.StandardCharsets.US_ASCII);
-                final StringBuilder normal = new StringBuilder();
-                for (final char c : shifted.toCharArray()) normal.append((char) (c - 3));
-                final String decoded = new String(java.util.Base64.getDecoder()
-                        .decode(normal.reverse().toString()), java.nio.charset.StandardCharsets.UTF_8);
-                final String video = new org.json.JSONObject(decoded).optString("source");
-                add(out, video, label, page.location());
-            } catch (final Exception ignored) { }
-        }
+
     }
 
     static void add(final Map<String, VideoStream> out,
