@@ -96,7 +96,14 @@ final class Config {
     String search(final String query) { return base + searchPath + encode(query); }
     String absolute(final String value) { if (value == null) return ""; String v = value.trim().replace("&amp;", "&"); return v.startsWith("//") ? "https:" + v : v.startsWith("/") ? base + v : v; }
     boolean accepts(final String url) { return url != null && absolute(url).matches("https://(?:www\\.)?supjav\\.com/\\d+\\.html(?:[?#].*)?"); }
-    String id(final String url) throws ParsingException { String value = absolute(url); if (!accepts(value)) throw new ParsingException("Invalid video URL: " + url); return value.substring(value.lastIndexOf("/") + 1).replaceFirst("\\.html(?:[?#].*)?$", ""); }
+    String id(final String url) throws ParsingException {
+        final String value = absolute(url);
+        if (!accepts(value)) throw new ParsingException("Invalid video URL: " + url);
+        final String videoId = value.substring(value.lastIndexOf("/") + 1)
+                .replaceFirst("\\.html(?:[?#].*)?$", "");
+        final int selected = SupjavServerCatalog.selectedIndex(value);
+        return videoId + (selected < 0 ? "" : "~s" + selected);
+    }
     Map<String, List<String>> headers() {
         final Map<String, List<String>> h = new java.util.HashMap<>();
         h.put("User-Agent", Collections.singletonList("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0"));
@@ -111,7 +118,13 @@ final class Config {
 final class StreamFactory extends LinkHandlerFactory {
     private final Config c; StreamFactory(final Config config) { c = config; }
     @Override public String getId(final String url) throws ParsingException { return c.id(url); }
-    @Override public String getUrl(final String id) { return c.base + "/" + id + ".html"; }
+    @Override public String getUrl(final String id) {
+        final java.util.regex.Matcher selected = Pattern.compile("^(\\d+)~s([0-9]{1,2})$").matcher(id);
+        return selected.matches()
+                ? SupjavServerCatalog.selectedUrl(c.base + "/" + selected.group(1) + ".html",
+                        Integer.parseInt(selected.group(2)))
+                : c.base + "/" + id + ".html";
+    }
     @Override public boolean onAcceptUrl(final String url) { return c.accepts(url); }
 }
 final class SearchFactory extends SearchQueryHandlerFactory {
@@ -142,7 +155,10 @@ final class Search extends SearchExtractor {
 final class Stream extends StreamExtractor {
     private final Config c; private Document page;
     Stream(final StreamingService s, final LinkHandler h, final Config config) { super(s, h); c = config; }
-    @Override public void onFetchPage(@Nonnull final Downloader d) throws IOException, ExtractionException { page = Parser.fetch(getUrl(), c); }
+    @Override public void onFetchPage(@Nonnull final Downloader d) throws IOException, ExtractionException {
+        page = Parser.fetch(SupjavServerCatalog.pageUrl(getUrl()), c);
+        SupjavServerCatalog.record(getUrl(), page);
+    }
     private Document doc() throws ParsingException { if (page == null) throw new ParsingException("Page was not fetched"); return page; }
     @Nonnull @Override public String getName() throws ParsingException { return Parser.first(Parser.meta(doc(), "meta[property=og:title]"), doc().title(), getId()); }
     @Nonnull @Override public String getThumbnailUrl() throws ParsingException { return Parser.meta(doc(), "meta[property=og:image]"); }
@@ -154,11 +170,12 @@ final class Stream extends StreamExtractor {
     @Override public String getTextualUploadDate() { return ""; }
     @Override public List<AudioStream> getAudioStreams() { return Collections.emptyList(); }
     @Override public List<VideoStream> getVideoStreams() throws IOException, ExtractionException {
-        final List<VideoStream> streams = SupjavServerResolver.resolve(doc(), getUrl());
-        if (streams.isEmpty()) {
-            throw new ParsingException("No direct Supjav media found; this line may require browser playback");
+        final int selected = SupjavServerCatalog.selectedIndex(getUrl());
+        if (selected < 0) {
+            // First-party detail and CD/server list load without querying third-party hosts.
+            return Collections.emptyList();
         }
-        return streams;
+        return SupjavServerResolver.resolveSelected(doc(), getUrl(), selected);
     }
     @Override public List<VideoStream> getVideoOnlyStreams() { return Collections.emptyList(); }
     @Override public StreamType getStreamType() { return StreamType.VIDEO_STREAM; }
