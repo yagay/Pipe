@@ -25,6 +25,7 @@ final class SupjavPlayerControls extends FrameLayout {
         void seekToFraction(float fraction);
         void setSpeed(float speed);
         void cycleQuality();
+        void toggleFullscreen();
     }
 
     private final TextView play;
@@ -98,6 +99,7 @@ final class SupjavPlayerControls extends FrameLayout {
         row.addView(speed);
         quality = action(context, "Auto", () -> actions.cycleQuality());
         row.addView(quality);
+        row.addView(action(context, "⛶", () -> actions.toggleFullscreen()));
         bottom.addView(row, new LinearLayout.LayoutParams(
                 LayoutParams.MATCH_PARENT, dp(48)));
         addView(bottom, new FrameLayout.LayoutParams(
