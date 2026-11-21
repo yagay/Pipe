@@ -48,6 +48,7 @@ jobs:
           ./gradlew :extractor:test \
             --tests org.schabi.newpipe.extractor.kiosk.BrowseUrlStateTest \
             --tests org.schabi.newpipe.extractor.kiosk.SiteBrowseCatalogRoutingTest \
+            --tests org.schabi.newpipe.extractor.services.missav.MissAvHlsQualityParserTest \
             --no-daemon --max-workers=2 --stacktrace
       - name: Build Debug APK
         working-directory: PipePipeClient
