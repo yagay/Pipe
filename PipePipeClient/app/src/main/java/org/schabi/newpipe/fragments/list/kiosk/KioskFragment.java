@@ -99,6 +99,7 @@ public class KioskFragment extends BaseListInfoFragment<StreamInfoItem, KioskInf
         final KioskFragment instance = new KioskFragment();
         instance.setInitialData(siteId, pageUrl, categoryName);
         instance.kioskId = "category:" + pageUrl;
+        instance.kioskTranslatedName = categoryName;
         return instance;
     }
 
@@ -128,7 +129,10 @@ public class KioskFragment extends BaseListInfoFragment<StreamInfoItem, KioskInf
     public void onCreate(final Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        kioskTranslatedName = KioskTranslator.getTranslatedKioskName(kioskId, activity);
+        if (kioskTranslatedName == null) {
+            kioskTranslatedName = kioskId.startsWith("category:")
+                    ? "Categories" : KioskTranslator.getTranslatedKioskName(kioskId, activity);
+        }
         name = kioskTranslatedName;
         contentCountry = Localization.getPreferredContentCountry(requireContext());
     }
