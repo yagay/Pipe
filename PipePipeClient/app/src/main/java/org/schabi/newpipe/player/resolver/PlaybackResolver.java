@@ -402,8 +402,8 @@ public interface PlaybackResolver extends Resolver<StreamInfo, MediaSource> {
         final String url = stream.getContent();
         if (isNullOrEmpty(url)) throw new IOException("Empty Supjav HLS URL");
         return dataSource.getSupjavHlsMediaSourceFactory(
-                extractStreamParameter(url, "ref"),
-                !"0".equals(extractStreamParameter(url, "origin"))).createMediaSource(
+                extractSupjavReferer(url),
+                !url.endsWith("&origin=0")).createMediaSource(
                 new MediaItem.Builder().setTag(metadata)
                         .setUri(Uri.parse(stripStreamMarker(url, "#supjav=1")))
                         .setCustomCacheKey(cacheKey).build());
@@ -419,8 +419,8 @@ public interface PlaybackResolver extends Resolver<StreamInfo, MediaSource> {
         final String url = stream.getContent();
         if (isNullOrEmpty(url)) throw new IOException("Empty Supjav MP4 URL");
         return dataSource.getSupjavProgressiveMediaSourceFactory(
-                extractStreamParameter(url, "ref"),
-                !"0".equals(extractStreamParameter(url, "origin"))).createMediaSource(
+                extractSupjavReferer(url),
+                !url.endsWith("&origin=0")).createMediaSource(
                 new MediaItem.Builder().setTag(metadata)
                         .setUri(Uri.parse(stripStreamMarker(url, "#supjav=1")))
                         .setCustomCacheKey(cacheKey).build());
@@ -1146,6 +1146,24 @@ public interface PlaybackResolver extends Resolver<StreamInfo, MediaSource> {
         }
         final String encodedReferer = url.substring(markerIndex + marker.length());
         return encodedReferer.isEmpty() ? null : Uri.decode(encodedReferer);
+    }
+
+    /**
+     * The original Supjav stream marker contains a percent-encoded player
+     * Referer. Use the raw substring, not Uri.getFragment(): the latter
+     * decodes %26 into '&' before a parameter split and can truncate signed
+     * player query parameters. Only the app-local &origin=0 suffix is removed.
+     */
+    @Nullable
+    private static String extractSupjavReferer(@NonNull final String url) {
+        final String marker = "#supjav=1&ref=";
+        final int start = url.indexOf(marker);
+        if (start < 0) return null;
+        String encoded = url.substring(start + marker.length());
+        if (encoded.endsWith("&origin=0")) {
+            encoded = encoded.substring(0, encoded.length() - "&origin=0".length());
+        }
+        return encoded.isEmpty() ? null : Uri.decode(encoded);
     }
 
     @Nullable
