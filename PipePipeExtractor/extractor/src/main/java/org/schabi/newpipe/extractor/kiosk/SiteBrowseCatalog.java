@@ -92,6 +92,28 @@ public final class SiteBrowseCatalog {
 
 
     private static final long CATEGORY_TTL_MS = 20 * 60 * 1000L;
+    private static final long PAGE_TTL_MS = 90 * 1000L;
+    private static final Map<String, PageCache> PAGE_CACHE =
+            new LinkedHashMap<String, PageCache>(24, .75f, true) {
+                @Override
+                protected boolean removeEldestEntry(final Map.Entry<String, PageCache> entry) {
+                    return size() > 24;
+                }
+            };
+
+    private static final class PageCache {
+        final Document document;
+        final long time;
+        PageCache(final Document document) {
+            this.document = document;
+            time = System.currentTimeMillis();
+        }
+    }
+
+    public static synchronized void invalidateCategories(final StreamingService service) {
+        CATEGORY_CACHE.remove(service.getServiceId());
+        PAGE_CACHE.clear();
+    }
     private static final Map<Integer, CategoryCache> CATEGORY_CACHE = new HashMap<>();
     private static final Set<String> HTML_SITES = new HashSet<>(java.util.Arrays.asList(
             "KissJAV", "85po", "Pornhub", "JAV-NONI", "JAVSB", "TOKYO Motion",
@@ -134,7 +156,7 @@ public final class SiteBrowseCatalog {
                     && path.matches("/video/?") && q.matches("(?:^|.*&)c=[0-9]+(?:&.*)?")) {
                 return true;
             }
-            return path.matches("(?i).*/(?:categories|category|tags|tag|genres|genre|topics|topic|channels|channel|collections|collection|uncensored|amateur)/[^/]+/?")
+            return path.matches("(?i).*/(?:categories|category|tags|tag|genres|genre|topics|topic|channels|channel|collections|collection|uncensored|amateur|c)/[^/]+/?")
                     || path.matches("(?i).*/(?:categories|category|tags|tag|genres|genre)/[^/]+/page/[0-9]+/?");
         } catch (final URISyntaxException ignored) {
             return false;
@@ -156,6 +178,12 @@ public final class SiteBrowseCatalog {
         if ("Pornhub".equals(service.getServiceInfo().getName())) {
             return PornhubParsingHelper.fetchDocument(url);
         }
+        synchronized (PAGE_CACHE) {
+            final PageCache cached = PAGE_CACHE.get(url);
+            if (cached != null && System.currentTimeMillis() - cached.time < PAGE_TTL_MS) {
+                return cached.document;
+            }
+        }
         final Map<String, List<String>> headers = new HashMap<>();
         headers.put("User-Agent", Collections.singletonList(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -168,7 +196,16 @@ public final class SiteBrowseCatalog {
         if (response.responseCode() < 200 || response.responseCode() >= 300) {
             throw new IOException("Site navigation returned HTTP " + response.responseCode());
         }
-        return Jsoup.parse(response.responseBody(), url);
+        final String finalUrl = response.latestUrl() == null
+                || response.latestUrl().isEmpty() ? url : response.latestUrl();
+        if (!sameSite(service.getBaseUrl(), finalUrl)) {
+            throw new IOException("Website navigation redirected outside the current source");
+        }
+        final Document document = Jsoup.parse(response.responseBody(), finalUrl);
+        synchronized (PAGE_CACHE) {
+            PAGE_CACHE.put(url, new PageCache(document));
+        }
+        return document;
     }
 
     private static boolean sameSite(final String base, final String target) {
@@ -184,7 +221,7 @@ public final class SiteBrowseCatalog {
                     : uri.getHost().toLowerCase(Locale.ROOT).replaceFirst("^www\\.", "");
             // Country-specific subdomain aliases are permitted for Pornhub.
             return host.equals(other)
-                    || ("pornhub.com".equals(host) && other.matches("[a-z]{2}\\.pornhub\\.com"));
+                    || (host.endsWith("pornhub.com") && other.matches("(?:[a-z]{2}|www)\\.pornhub\\.com"));
         } catch (final URISyntaxException | NullPointerException ignored) {
             return false;
         }
@@ -224,7 +261,7 @@ public final class SiteBrowseCatalog {
                     found.putIfAbsent(canonical, new Entry("category:" + canonical,
                             label, canonical));
                 } else if (categoryIndex == null && !target.equals(home)
-                        && target.matches("(?i)https://[^/]+/(?:[a-z]{2}/)?(?:categories|genres|tags)/?")) {
+                        && target.matches("(?i)https://[^/]+/(?:[a-z]{2}/)?(?:categories|category|genres|genre|tags|tag)/?")) {
                     categoryIndex = target;
                 }
             }
