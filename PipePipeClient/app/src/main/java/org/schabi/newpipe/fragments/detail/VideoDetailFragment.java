@@ -1097,7 +1097,7 @@ public final class VideoDetailFragment
                     supjavPlayAfterSelection = false;
                     if (startLucBrowserRecovery(throwable)) return;
                     showSelectedServerError(throwable);
-                });;
+                });
     }
 
     /**
