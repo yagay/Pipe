@@ -951,19 +951,17 @@ public final class Player implements
                 return;
             }
             // Reuse Pipe's own speed popup and dismiss behavior.
-            final float[] speeds = {.75f, 1f, 1.25f, 1.5f, 2f};
             playbackSpeedPopupMenu.getMenu().clear();
-            for (int i = 0; i < speeds.length; i++) {
+            for (int i = 0; i < PLAYBACK_SPEEDS.length; i++) {
                 playbackSpeedPopupMenu.getMenu().add(0, i, i,
-                        String.format(java.util.Locale.ROOT, "%s×", speeds[i]));
+                        formatSpeed(PLAYBACK_SPEEDS[i]));
             }
             playbackSpeedPopupMenu.setOnMenuItemClickListener(item -> {
-                final float value = speeds[item.getItemId()];
+                final float value = PLAYBACK_SPEEDS[item.getItemId()];
                 supjavHlsSpeed = value;
                 supjavHlsEngine.command("speed(" + value + ")");
                 notifyPlaybackUpdateToListeners();
-                binding.playbackSpeed.setText(String.format(java.util.Locale.ROOT,
-                        "%s×", value));
+                binding.playbackSpeed.setText(formatSpeed(value));
                 return true;
             });
             playbackSpeedPopupMenu.show();
@@ -2170,7 +2168,7 @@ public final class Player implements
     public void setPlaybackParameters(final float speed, final float pitch,
                                       final boolean skipSilence) {
         if (supjavHlsEngine != null) {
-            supjavHlsSpeed = Math.max(0.25f, Math.min(4f, speed));
+            supjavHlsSpeed = Math.max(0.1f, Math.min(10f, speed));
             supjavHlsEngine.command("speed(" + supjavHlsSpeed + ")");
             notifyPlaybackUpdateToListeners();
             return;
