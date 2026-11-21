@@ -329,23 +329,13 @@ public class MainActivity extends AppCompatActivity {
                 NavigationHelper.openStatisticFragment(getSupportFragmentManager());
                 break;
             default:
-                if (item.getItemId() < ITEM_ID_KIOSK_BASE) {
-                    return;
-                }
-                final int kioskIndex = item.getItemId() - ITEM_ID_KIOSK_BASE;
-                if (kioskIndex >= 0 && kioskIndex < drawerKioskIds.size()) {
-                    NavigationHelper.openKioskFragment(getSupportFragmentManager(),
-                            ServiceHelper.getSelectedServiceId(this),
-                            drawerKioskIds.get(kioskIndex));
-                }
-                break;
+                if (item.getItemId() >= ITEM_ID_KIOSK_BASE) {
+                    final int index = item.getItemId() - ITEM_ID_KIOSK_BASE;
+                    if (index >= 0 && index < drawerKioskIds.size()) {
+                        NavigationHelper.openKioskFragment(getSupportFragmentManager(),
+                                ServiceHelper.getSelectedServiceId(this),
+                                drawerKioskIds.get(index));
                     }
-                    kioskIndex++;
-                }
-
-                if (!serviceName.isEmpty()) {
-                    NavigationHelper.openKioskFragment(getSupportFragmentManager(), currentServiceId,
-                            serviceName);
                 }
                 break;
         }
