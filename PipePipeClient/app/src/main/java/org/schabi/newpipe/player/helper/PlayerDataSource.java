@@ -455,17 +455,21 @@ public class PlayerDataSource {
         // HTTPS host, including HLS child playlists and segments.
         final okhttp3.OkHttpClient supjavClient =
                 DownloaderImpl.getInstance().getClient().newBuilder()
+                        .addNetworkInterceptor(chain -> {
+                            // This runs again on every redirect/segment host.
+                            // Never reuse another hostname's Cookie header.
+                            final okhttp3.Request request = chain.request();
+                            if (lucProfile == null) return chain.proceed(request);
+                            final String cookie = org.schabi.newpipe.player.datasource
+                                    .SupjavLucNetworkContext.cookiesForRequest(
+                                            request.url().toString());
+                            final okhttp3.Request.Builder withCookies = request.newBuilder()
+                                    .removeHeader("Cookie");
+                            if (cookie != null) withCookies.header("Cookie", cookie);
+                            return chain.proceed(withCookies.build());
+                        })
                         .addInterceptor(chain -> {
-                            okhttp3.Request request = chain.request();
-                            if (lucProfile != null) {
-                                final String cookie = org.schabi.newpipe.player.datasource
-                                        .SupjavLucNetworkContext.cookiesForRequest(
-                                                request.url().toString());
-                                if (cookie != null) {
-                                    request = request.newBuilder()
-                                            .header("Cookie", cookie).build();
-                                }
-                            }
+                            final okhttp3.Request request = chain.request();
                             final okhttp3.Response response = chain.proceed(request);
                             if (response.code() != 403 || request.header("Origin") == null) {
                                 if (response.code() >= 400) {
