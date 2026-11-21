@@ -14,6 +14,8 @@ import org.schabi.newpipe.extractor.stream.StreamInfoItemsCollector;
 import org.schabi.newpipe.extractor.utils.PageNavigation;
 
 import java.io.IOException;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import javax.annotation.Nonnull;
 
 public final class MissAvKioskExtractor extends KioskExtractor<StreamInfoItem> {
@@ -50,32 +52,48 @@ public final class MissAvKioskExtractor extends KioskExtractor<StreamInfoItem> {
     public InfoItemsPage<StreamInfoItem> getInitialPage()
             throws IOException, ExtractionException {
         assertPageFetched();
-        final StreamInfoItemsCollector collector =
-                new StreamInfoItemsCollector(getServiceId());
-        for (final Element link : document.select("a[href*=/" + MissAvParsingHelper.DEFAULT_LANGUAGE
-                + "/]")) {
-            final String href = link.absUrl("href");
-            if (MissAvStreamLinkHandlerFactory.getInstance().onAcceptUrl(href)
-                    && link.selectFirst("img") != null) {
-                collector.commit(new MissAvKioskInfoItemExtractor(link));
-            }
-        }
-        return new InfoItemsPage<>(collector, PageNavigation.nextPage(document));
+        return collectPage(document);
+
     }
 
     @Override
     public InfoItemsPage<StreamInfoItem> getPage(final Page page)
             throws IOException, ExtractionException {
         final Document nextDocument = MissAvParsingHelper.fetchDocument(page.getUrl());
-        final StreamInfoItemsCollector collector = new StreamInfoItemsCollector(getServiceId());
-        for (final Element link : nextDocument.select("a[href*=/"
-                + MissAvParsingHelper.DEFAULT_LANGUAGE + "/]")) {
+        return collectPage(nextDocument);
+
+    }
+    private InfoItemsPage<StreamInfoItem> collectPage(final Document page)
+            throws IOException, ExtractionException {
+        final StreamInfoItemsCollector collector =
+                new StreamInfoItemsCollector(getServiceId());
+        final Set<String> seenIds = new LinkedHashSet<>();
+        for (final Element link : page.select("a[href]:has(img)")) {
             final String href = link.absUrl("href");
-            if (MissAvStreamLinkHandlerFactory.getInstance().onAcceptUrl(href)
-                    && link.selectFirst("img") != null) {
-                collector.commit(new MissAvKioskInfoItemExtractor(link));
+            final String id;
+            try {
+                if (!MissAvStreamLinkHandlerFactory.getInstance().onAcceptUrl(href)) {
+                    continue;
+                }
+                id = MissAvParsingHelper.extractId(href).toLowerCase(java.util.Locale.ROOT);
+            } catch (final ParsingException ignored) {
+                continue;
+            }
+            // Category/directory links are often image-backed too; accept only video IDs.
+            if (!MissAvParsingHelper.isVideoId(id) || !seenIds.add(id)) {
+                continue;
+            }
+            collector.commit(new MissAvKioskInfoItemExtractor(link));
+        }
+        Page next = PageNavigation.nextPage(page);
+        if (next != null) {
+            final String nextUrl = next.getUrl();
+            if (nextUrl == null || !MissAvBrowseCatalog.isBrowsePage(nextUrl)
+                    || nextUrl.equalsIgnoreCase(page.baseUri())) {
+                next = null;
             }
         }
-        return new InfoItemsPage<>(collector, PageNavigation.nextPage(nextDocument));
+        return new InfoItemsPage<>(collector, next);
     }
+
 }
