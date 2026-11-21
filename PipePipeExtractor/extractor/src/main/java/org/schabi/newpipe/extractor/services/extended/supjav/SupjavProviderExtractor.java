@@ -27,7 +27,8 @@ final class SupjavProviderExtractor {
                                      final SupjavServerCatalog.Entry server) {
         final Map<String, VideoStream> found = new LinkedHashMap<>();
         final String label = server.part + "|" + server.provider;
-        addMedia(found, page, label);
+        // Provider-owned declarations take precedence over any generic HTML
+        // source, which may be a preview or advertisement on some mirrors.
         if ("FST".equals(server.provider) || "FAST".equals(server.provider)
                 || "FPLAYER".equals(server.provider)) {
             addFst(found, page, label);
@@ -39,6 +40,7 @@ final class SupjavProviderExtractor {
         if ("VAS".equals(server.provider)) {
             addVas(found, page, label);
         }
+        addMedia(found, page, label);
         return new ArrayList<>(found.values());
     }
 
