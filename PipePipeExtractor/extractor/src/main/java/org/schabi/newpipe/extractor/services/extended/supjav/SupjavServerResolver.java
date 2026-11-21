@@ -26,7 +26,8 @@ final class SupjavServerResolver {
 
     static List<VideoStream> resolve(final Document detail, final String detailUrl) {
         final Map<String, VideoStream> found = new LinkedHashMap<>();
-        addMedia(found, detail, "Main|Direct");
+        // Only selected player documents are trusted as media sources. The detail
+        // page may contain preview/advertisement media that cannot be played.
         final java.util.List<Element> entries = detail.select(
                 ".btn-server[data-link], .btnst a[data-link], .btns a[data-link], "
                 + "#server-list [data-link], .server-list [data-link], "
@@ -127,7 +128,7 @@ final class SupjavServerResolver {
         final String value = item.text().trim().isEmpty()
                 ? item.attr("data-server").trim() : item.text().trim();
         final String result = value.replaceAll(
-                "(?i)\\b(?:CD|DISC|PART)[ _-]*[0-9]+\\\\b", "").trim();
+                "(?i)\\b(?:CD|DISC|PART)[ _-]*[0-9]+\\b", "").trim();
         return result.isEmpty() ? "Player" : result.split("\\s+")[0]
                 .toUpperCase(java.util.Locale.ROOT);
     }
@@ -144,8 +145,23 @@ final class SupjavServerResolver {
 
     private static void addMedia(final Map<String, VideoStream> out,
                                  final Document page, final String label) {
-        for (final String url : Parser.media(page, true)) {
+        // Native HTML5 sources are unambiguous; scanning arbitrary page scripts
+        // for a URL would also collect advertising or expired preview assets.
+        for (final String url : Parser.media(page, false)) {
             add(out, url, label, page.location());
+        }
+        final java.util.regex.Pattern declared = java.util.regex.Pattern.compile(
+                "(?i)(?:urlPlay|streaming_url|file|source)\\s*[:=]\\s*[\\\"']"
+                + "(https?://[^\\\"'<>\\s]{8,2048})[\\\"']");
+        for (final Element script : page.select("script:not([src])")) {
+            final String rawScript = script.data().isEmpty() ? script.html() : script.data();
+            for (final String source : new String[]{rawScript, Parser.unpackPacker(rawScript)}) {
+                final java.util.regex.Matcher match = declared.matcher(source);
+                while (match.find()) {
+                    add(out, match.group(1).replace("\\/", "/"),
+                            label, page.location());
+                }
+            }
         }
         // EarnVids/LuluStream/FST may declare signed HLS URLs under
         // hls2/hls4/hls3 instead of a normal <video> element.
