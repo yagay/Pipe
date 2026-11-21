@@ -116,6 +116,7 @@ import org.schabi.newpipe.diagnostics.DiagnosticLog;
 import org.schabi.newpipe.error.UserAction;
 import org.schabi.newpipe.extractor.*;
 import org.schabi.newpipe.extractor.exceptions.ExtractionException;
+import org.schabi.newpipe.extractor.services.extended.supjav.SupjavServerCatalog;
 import org.schabi.newpipe.extractor.sponsorblock.SponsorBlockAction;
 import org.schabi.newpipe.extractor.sponsorblock.SponsorBlockSegment;
 import org.schabi.newpipe.extractor.stream.*;
@@ -320,6 +321,11 @@ public final class Player implements
     private final java.util.List<Integer> supjavQualityLevels = new java.util.ArrayList<>();
     private boolean supjavQueueActive;
     private boolean supjavForegroundNotification;
+    private final SerialDisposable supjavCatalogDisposable = new SerialDisposable();
+    private final List<SupjavServerCatalog.Entry> supjavSourceEntries = new ArrayList<>();
+    private String supjavCatalogPage = "";
+    private int supjavCatalogGeneration;
+    private long supjavRestorePositionMs = -1;
 
     private final Handler controlsVisibilityHandler = new Handler();
 
@@ -604,8 +610,10 @@ public final class Player implements
         supjavHlsPositionMs = 0;
         supjavHlsPaused = true;
         supjavHlsDurationMs = 0;
+        supjavRestorePositionMs = -1;
         currentState = STATE_BUFFERING;
         playerType = PlayerType.VIDEO;
+        isVerticalVideo = false;
         isAudioOnly = false;
 
         binding.getRoot().setVisibility(View.VISIBLE);
@@ -621,6 +629,12 @@ public final class Player implements
         binding.playbackSpeed.setVisibility(View.VISIBLE);
         binding.playbackSpeed.setText("1×");
         binding.playPauseButton.setImageResource(R.drawable.ic_play_arrow);
+        // Preserve the ordinary Pipe fullscreen action regardless of Android's
+        // auto-rotate setting. Supjav is still the main VIDEO player.
+        setupScreenRotationButton();
+        binding.supjavSourceControls.setVisibility(View.VISIBLE);
+        binding.supjavServerButton.setText("线路 ▾");
+        binding.supjavCdButtons.removeAllViews();
 
         supjavHlsEngine = new SupjavHlsEngine(binding.supjavHlsSurface,
                 new SupjavHlsEngine.Listener() {
@@ -632,6 +646,12 @@ public final class Player implements
                         if (supjavHlsEngine == null) return;
                         supjavHlsPositionMs = position;
                         supjavHlsDurationMs = duration;
+                        if (duration > 0 && supjavRestorePositionMs > 0) {
+                            final long resumeAt = supjavRestorePositionMs;
+                            supjavRestorePositionMs = -1;
+                            supjavHlsEngine.command("seekFraction("
+                                    + Math.min(1d, resumeAt / (double) duration) + ")");
+                        }
                         if (supjavHlsPaused != paused) {
                             supjavHlsPaused = paused;
                             currentState = paused ? STATE_PAUSED : STATE_PLAYING;
@@ -765,12 +785,171 @@ public final class Player implements
         binding.playbackEndTime.setText("0:00");
         binding.loadingPanelWrapper.setVisibility(View.VISIBLE);
         binding.playPauseButton.setImageResource(R.drawable.ic_play_arrow);
+        loadSupjavSourceControls(page);
         updateSupjavSession(
                 android.support.v4.media.session.PlaybackStateCompat.STATE_BUFFERING);
         if (mediaSessionManager != null) mediaSessionManager.refreshBrowserQueue();
         showOrHideButtons();
         closeItemsList();
         supjavHlsEngine.open(url, supjavServerIndex);
+    }
+
+    /**
+     * Supjav CD tabs and provider menu live in the existing PlayerBinding.
+     * The catalog is loaded off the UI thread and may be cached by the extractor.
+     * Never call the network from a player click handler.
+     */
+    private void loadSupjavSourceControls(final String pageUrl) {
+        if (supjavHlsEngine == null || binding == null) return;
+        final String page = SupjavServerCatalog.pageUrl(pageUrl);
+        binding.supjavSourceControls.setVisibility(View.VISIBLE);
+        if (page.equals(supjavCatalogPage) && !supjavSourceEntries.isEmpty()) {
+            renderSupjavSourceControls();
+            return;
+        }
+        final int version = ++supjavCatalogGeneration;
+        supjavCatalogDisposable.set(null);
+        supjavCatalogPage = page;
+        supjavSourceEntries.clear();
+        binding.supjavCdButtons.removeAllViews();
+        binding.supjavServerButton.setText("线路…");
+        supjavCatalogDisposable.set(io.reactivex.rxjava3.core.Single
+                .fromCallable(() -> SupjavServerCatalog.forPage(page))
+                .subscribeOn(io.reactivex.rxjava3.schedulers.Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(entries -> {
+                    if (supjavHlsEngine == null || version != supjavCatalogGeneration
+                            || !page.equals(supjavCatalogPage) || binding == null) return;
+                    supjavSourceEntries.clear();
+                    supjavSourceEntries.addAll(entries);
+                    renderSupjavSourceControls();
+                    DiagnosticLog.event("SUPJAV", "PLAYER_SOURCES_READY",
+                            "count=" + entries.size() + " selected=" + supjavServerIndex);
+                }, error -> {
+                    if (supjavHlsEngine == null || version != supjavCatalogGeneration
+                            || binding == null) return;
+                    binding.supjavServerButton.setText("线路 ▾");
+                    DiagnosticLog.error("SUPJAV", "PLAYER_SOURCES_FAILED", error,
+                            "source catalog");
+                    Toast.makeText(context, "线路列表读取失败，点击重试",
+                            Toast.LENGTH_SHORT).show();
+                }));
+    }
+
+    private SupjavServerCatalog.Entry selectedSupjavSource() {
+        for (final SupjavServerCatalog.Entry entry : supjavSourceEntries) {
+            if (entry.index == supjavServerIndex) return entry;
+        }
+        return null;
+    }
+
+    /** Dynamically display the real CD labels found on THIS video. */
+    private void renderSupjavSourceControls() {
+        if (binding == null || supjavHlsEngine == null) return;
+        binding.supjavSourceControls.setVisibility(View.VISIBLE);
+        binding.supjavCdButtons.removeAllViews();
+        if (supjavSourceEntries.isEmpty()) {
+            binding.supjavServerButton.setText("线路 ▾");
+            return;
+        }
+        final SupjavServerCatalog.Entry current = selectedSupjavSource();
+        final String currentPart = current == null
+                ? supjavSourceEntries.get(0).part : current.part;
+        final LinkedHashSet<String> cds = new LinkedHashSet<>();
+        for (final SupjavServerCatalog.Entry entry : supjavSourceEntries) {
+            if (!"Main".equalsIgnoreCase(entry.part)) cds.add(entry.part);
+        }
+        for (final String cd : cds) {
+            final TextView tab = new TextView(context);
+            tab.setText(cd);
+            tab.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+            tab.setTextColor(Color.WHITE);
+            tab.setGravity(Gravity.CENTER);
+            tab.setPadding(dp(9), 0, dp(9), 0);
+            final boolean selected = cd.equals(currentPart);
+            tab.setAlpha(selected ? 1f : .65f);
+            tab.setTypeface(null, selected
+                    ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+            final TypedValue background = new TypedValue();
+            if (context.getTheme().resolveAttribute(
+                    android.R.attr.selectableItemBackgroundBorderless, background, true)
+                    && background.resourceId != 0) {
+                tab.setBackgroundResource(background.resourceId);
+            }
+            tab.setContentDescription("切换到 " + cd);
+            tab.setOnClickListener(v -> switchSupjavCd(cd));
+            binding.supjavCdButtons.addView(tab,
+                    new LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            LinearLayout.LayoutParams.MATCH_PARENT));
+        }
+        binding.supjavServerButton.setText("线路 · "
+                + (current == null ? "选择" : current.provider) + " ▾");
+    }
+
+    /** Prefer VAS only WITHIN the chosen CD. Do not jump to another CD. */
+    private void switchSupjavCd(final String part) {
+        if (supjavHlsEngine == null || supjavSourceEntries.isEmpty()) return;
+        final SupjavServerCatalog.Entry current = selectedSupjavSource();
+        if (current != null && part.equals(current.part)) return;
+        SupjavServerCatalog.Entry first = null;
+        for (final SupjavServerCatalog.Entry entry : supjavSourceEntries) {
+            if (!part.equals(entry.part)) continue;
+            if (first == null) first = entry;
+            if ("VAS".equalsIgnoreCase(entry.provider)) {
+                first = entry;
+                break;
+            }
+        }
+        if (first != null) switchSupjavServer(first.index);
+    }
+
+    /** Select the provider without changing the Pipe activity or queue. */
+    private void switchSupjavServer(final int selected) {
+        if (supjavHlsEngine == null || selected == supjavServerIndex
+                || playQueue == null || playQueue.getItem() == null) return;
+        boolean known = false;
+        for (final SupjavServerCatalog.Entry entry : supjavSourceEntries) {
+            if (entry.index == selected) {
+                known = true;
+                break;
+            }
+        }
+        if (!known) return;
+        final int previous = supjavServerIndex;
+        supjavRestorePositionMs = Math.max(0, supjavHlsPositionMs);
+        supjavServerIndex = selected;
+        renderSupjavSourceControls();
+        DiagnosticLog.event("SUPJAV", "PLAYER_SOURCE_SWITCH",
+                "from=" + previous + " to=" + selected);
+        openSupjavQueueItem(playQueue.getItem().getUrl());
+    }
+
+    /** Use a popup anchored to the EXISTING Pipe player toolbar. */
+    private void showSupjavServers() {
+        if (supjavHlsEngine == null || playQueue == null || playQueue.getItem() == null) return;
+        if (supjavSourceEntries.isEmpty()) {
+            loadSupjavSourceControls(playQueue.getItem().getUrl());
+            return;
+        }
+        final SupjavServerCatalog.Entry selected = selectedSupjavSource();
+        final String activeCd = selected == null ? null : selected.part;
+        final PopupMenu menu = new PopupMenu(themeWrapper, binding.supjavServerButton);
+        int count = 0;
+        for (final SupjavServerCatalog.Entry entry : supjavSourceEntries) {
+            if (activeCd != null && !activeCd.equals(entry.part)) continue;
+            final MenuItem item = menu.getMenu().add(Menu.NONE, entry.index,
+                    count++, entry.provider);
+            item.setCheckable(true);
+            item.setChecked(entry.index == supjavServerIndex);
+        }
+        menu.setOnMenuItemClickListener(item -> {
+            switchSupjavServer(item.getItemId());
+            return true;
+        });
+        menu.setOnDismissListener(popup -> isSomePopupMenuVisible = false);
+        isSomePopupMenuVisible = true;
+        menu.show();
     }
 
     private void advanceSupjavQueue(final int delta) {
@@ -780,6 +959,7 @@ public final class Player implements
             if (getRepeatMode() != REPEAT_MODE_ALL) return;
         }
         playQueue.setIndex((next + playQueue.size()) % playQueue.size());
+        supjavRestorePositionMs = -1;
         openSupjavQueueItem(playQueue.getItem().getUrl());
     }
 
@@ -798,6 +978,11 @@ public final class Player implements
         if (supjavHlsEngine == null) return;
         supjavHlsEngine.close();
         supjavHlsEngine = null;
+        supjavCatalogGeneration++;
+        supjavCatalogDisposable.set(null);
+        supjavSourceEntries.clear();
+        supjavCatalogPage = "";
+        supjavRestorePositionMs = -1;
         if (mediaSessionManager != null) mediaSessionManager.setBrowserPlayback(false);
         if (supjavForegroundNotification) {
             NotificationUtil.getInstance().cancelNotificationAndStopForeground(
@@ -829,8 +1014,11 @@ public final class Player implements
         supjavQueueActive = false;
         if (binding != null) {
             binding.supjavHlsSurface.setVisibility(View.GONE);
+            binding.supjavSourceControls.setVisibility(View.GONE);
+            binding.supjavCdButtons.removeAllViews();
             binding.loadingPanelWrapper.setVisibility(View.GONE);
             binding.surfaceView.setVisibility(View.VISIBLE);
+            setupScreenRotationButton();
         }
     }
 
@@ -991,6 +1179,7 @@ public final class Player implements
         binding.playPauseButton.setOnClickListener(this);
         binding.playPreviousButton.setOnClickListener(this);
         binding.playNextButton.setOnClickListener(this);
+        binding.supjavServerButton.setOnClickListener(v -> showSupjavServers());
 
         binding.moreOptionsButton.setOnClickListener(this);
         binding.moreOptionsButton.setOnLongClickListener(this);
@@ -5103,10 +5292,15 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
             } else if (v.getId() == binding.playerCloseButton.getId()) {
                 stopSupjavHls();
                 context.sendBroadcast(new Intent(VideoDetailFragment.ACTION_HIDE_MAIN_PLAYER));
-            } else if (v.getId() == binding.qualityTextView.getId()) {
-                supjavHlsEngine.command("cycleQuality()");
+            } else if (v.getId() == binding.playPreviousButton.getId()) {
+                playPrevious();
+            } else if (v.getId() == binding.playNextButton.getId()) {
+                playNext();
+            } else if (v.getId() == binding.moreOptionsButton.getId()) {
+                onMoreOptionsClicked();
             } else if (v.getId() == binding.screenRotationButton.getId()) {
                 onScreenRotationButtonClicked();
+                manageControlsAfterOnClick(v);
             }
             return;
         }
@@ -5335,8 +5529,8 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
 
     private void setupScreenRotationButton() {
         binding.screenRotationButton.setVisibility(videoPlayerSelected()
-                && (globalScreenOrientationLocked(context) || isVerticalVideo
-                        || DeviceUtils.isTablet(context))
+                && (supjavHlsEngine != null || globalScreenOrientationLocked(context)
+                        || isVerticalVideo || DeviceUtils.isTablet(context))
                 ? View.VISIBLE : View.GONE);
         binding.screenRotationButton.setImageDrawable(AppCompatResources.getDrawable(context,
                 isFullscreen ? R.drawable.ic_fullscreen_exit
