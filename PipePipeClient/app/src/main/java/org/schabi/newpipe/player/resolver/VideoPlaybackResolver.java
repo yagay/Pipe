@@ -84,9 +84,15 @@ public class VideoPlaybackResolver implements PlaybackResolver {
         removeTorrentStreams(videoOnlyStreams);
 
         // Create video stream source
-        List<VideoStream> videos = ListHelper.getSortedStreamVideosList(context,
-                videoStreams, videoOnlyStreams, false, true)
-                .stream().filter(s -> !blacklistUrls.contains(s.getContent())).collect(Collectors.toList());
+        // Supjav's independent servers often share the same resolution. The generic
+        // resolution deduplicator would silently discard CD2 and alternative hosts.
+        List<VideoStream> videos = (info.getServiceId()
+                == org.schabi.newpipe.extractor.ServiceList.Supjav.getServiceId()
+                ? new ArrayList<>(videoStreams)
+                : ListHelper.getSortedStreamVideosList(context,
+                        videoStreams, videoOnlyStreams, false, true))
+                .stream().filter(s -> !blacklistUrls.contains(s.getContent()))
+                .collect(Collectors.toList());
 
         if (audioTrack != null) {
             final List<VideoStream> filtered = videos.stream()
