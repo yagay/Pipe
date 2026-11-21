@@ -84,6 +84,11 @@ public final class SupjavBrowserHlsDocument {
                     &&video.duration>0)video.currentTime=video.duration*
                       Math.max(0,Math.min(1,fraction));},
                   speed:function(rate){video.playbackRate=rate;},
+                  quality:function(index){if(!hls||!Number.isInteger(index)||
+                    index< -1||index>=hls.levels.length)return;
+                    qualityIndex=index;hls.currentLevel=index;
+                    log('QUALITY:'+(index<0?'Auto':
+                      (hls.levels[index].height||'?')+'p'));},
                   cycleQuality:function(){if(!hls||!hls.levels.length)return;
                     qualityIndex=qualityIndex>=hls.levels.length-1?-1:qualityIndex+1;
                     hls.currentLevel=qualityIndex;
@@ -131,11 +136,19 @@ public final class SupjavBrowserHlsDocument {
                    hls.on(Hls.Events.MANIFEST_PARSED,function(){
                      initialized=true;log('READY');status.textContent='';
                      quality.innerHTML='<option value="-1">Auto</option>';
+                     var highest=-1,highestScore=-1;
                      hls.levels.forEach(function(level,i){
                        if(!level.height)return;
                        var o=document.createElement('option');o.value=i;
                        o.textContent=level.height+'p';quality.appendChild(o);
+                       var score=level.height*1000000+(level.bitrate||0);
+                       if(score>highestScore){highestScore=score;highest=i;}
                      });
+                     log('LEVELS:'+hls.levels.map(function(l){return l.height||0;}).join(','));
+                     if(highest>=0){
+                       qualityIndex=highest;hls.currentLevel=highest;
+                       log('QUALITY:'+(hls.levels[highest].height||'?')+'p');
+                     }else{log('QUALITY:Auto');}
                      video.play().catch(function(){status.textContent='Tap play to start';});
                    });
                    hls.on(Hls.Events.ERROR,function(evt,error){
