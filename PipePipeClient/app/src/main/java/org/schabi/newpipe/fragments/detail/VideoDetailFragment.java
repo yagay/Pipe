@@ -1086,9 +1086,17 @@ public final class VideoDetailFragment
                     }
                 }, throwable -> {
                     supjavPlayAfterSelection = false;
-                    showError(new ErrorInfo(throwable, UserAction.REQUESTED_STREAM,
-                            url == null ? "no url" : url, serviceId));
-                    if (serviceId == ServiceList.Supjav.getServiceId()
+                    final boolean selectedLuc = serviceId == ServiceList.Supjav.getServiceId()
+                            && SupjavServerCatalog.selectedProviderIs(url, "LUC");
+                    if (!selectedLuc) {
+                        showError(new ErrorInfo(throwable, UserAction.REQUESTED_STREAM,
+                                url == null ? "no url" : url, serviceId));
+                    }
+                    if (selectedLuc && isAdded()) {
+                        DiagnosticLog.event("SUPJAV", "LUC_BROWSER_FALLBACK",
+                                "Native media unavailable; opening selected browser player");
+                        SupjavWebPlayerActivity.open(requireContext(), url);
+                    } else if (serviceId == ServiceList.Supjav.getServiceId()
                             && SupjavServerCatalog.selectedIndex(url) >= 0 && isAdded()) {
                         DiagnosticLog.error("SUPJAV", "SELECTED_SERVER_FAILED", throwable,
                                 "serverIndex=" + SupjavServerCatalog.selectedIndex(url));
