@@ -153,7 +153,13 @@ final class Stream extends StreamExtractor {
     @Nonnull @Override public List<String> getTags() { return Collections.emptyList(); }
     @Override public String getTextualUploadDate() { return ""; }
     @Override public List<AudioStream> getAudioStreams() { return Collections.emptyList(); }
-    @Override public List<VideoStream> getVideoStreams() throws IOException, ExtractionException { final LinkedHashMap<String, VideoStream> out = new LinkedHashMap<>(); List<String> media = Parser.media(doc(), c.directMedia); String playerPage = ""; if (media.isEmpty() && !c.directMedia) { final Element frame = doc().selectFirst("iframe[src]"); if (frame != null) { playerPage = frame.absUrl("src"); media = Parser.media(Parser.fetchExternal(playerPage, c.base + "/"), true); } } for (final String url : media) { final String resolution = Parser.resolution(url); final String content = url; out.put(url, new VideoStream.Builder().setId(resolution).setContent(content, true).setResolution(resolution).setMediaFormat(url.contains(".m3u8") ? MediaFormat.MPEG_4 : MediaFormat.MPEG_4).setDeliveryMethod(url.contains(".m3u8") ? DeliveryMethod.HLS : DeliveryMethod.PROGRESSIVE_HTTP).setIsVideoOnly(false).build()); } if (out.isEmpty()) throw new ParsingException("No direct media URL found on page"); return new ArrayList<>(out.values()); }
+    @Override public List<VideoStream> getVideoStreams() throws IOException, ExtractionException {
+        final List<VideoStream> streams = SupjavServerResolver.resolve(doc(), getUrl());
+        if (streams.isEmpty()) {
+            throw new ParsingException("No direct Supjav media found; this line may require browser playback");
+        }
+        return streams;
+    }
     @Override public List<VideoStream> getVideoOnlyStreams() { return Collections.emptyList(); }
     @Override public StreamType getStreamType() { return StreamType.VIDEO_STREAM; }
     @Override public InfoItemsCollector<? extends InfoItem, ? extends InfoItemExtractor> getRelatedItems() throws ParsingException { final StreamInfoItemsCollector out = new StreamInfoItemsCollector(getServiceId()); for (final Item item : Parser.cards(doc(), c)) if (!item.url.equals(getUrl())) out.commit(new ItemExtractor(item)); return out; }
