@@ -493,6 +493,18 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
                 sendHlsCommand("speed(" + speed + ")");
             }
             @Override public void cycleQuality() { sendHlsCommand("cycleQuality()"); }
+            @Override public void toggleFullscreen() {
+                final int orientation = getRequestedOrientation();
+                if (orientation == android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE) {
+                    setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+                    getWindow().getDecorView().setSystemUiVisibility(0);
+                } else {
+                    setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+                    getWindow().getDecorView().setSystemUiVisibility(
+                            View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                            | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+                }
+            }
         });
         embeddedContainer.addView(playerControls, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
