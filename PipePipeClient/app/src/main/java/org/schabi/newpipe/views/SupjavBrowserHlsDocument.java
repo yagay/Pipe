@@ -12,10 +12,10 @@ import java.nio.charset.StandardCharsets;
  * The real provider WebView discovers URLs; this renderer never manufactures
  * signed media URLs, fetches via Media3, or copies unrelated site cookies.
  */
-final class SupjavBrowserHlsDocument {
+public final class SupjavBrowserHlsDocument {
     private SupjavBrowserHlsDocument() { }
 
-    static String render(final String manifest) {
+    public static String render(final String manifest) {
         final String encoded = Base64.encodeToString(
                 manifest.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
         return """
