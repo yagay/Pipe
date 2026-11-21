@@ -28,6 +28,7 @@ final class SupjavBrowserHlsDocument {
                 #wrap{position:fixed;inset:0;background:#000;display:flex;
                 align-items:center;justify-content:center}
                 video{width:100%;height:100%;object-fit:contain}
+                #controls{display:none!important}
                 #controls{position:absolute;bottom:0;left:0;right:0;padding:12px 14px 20px;
                 background:linear-gradient(transparent,rgba(0,0,0,.87));display:flex;
                 gap:10px;align-items:center;flex-wrap:wrap}
@@ -69,7 +70,36 @@ final class SupjavBrowserHlsDocument {
                    log('ERROR:'+code);}
                  function clock(s){if(!isFinite(s)||s<0)return '0:00';
                    s=Math.floor(s);return Math.floor(s/60)+':'+('0'+s%60).slice(-2);}
-                 function update(){if(isFinite(video.duration)&&video.duration>0){
+                 // Shared native player UI receives progress and drives the same
+                // video element through a single command interface.
+                var qualityIndex=-1;
+                window.PipeHls={
+                  toggle:function(){if(video.paused)video.play().catch(function(){});
+                    else video.pause();},
+                  seek:function(delta){if(isFinite(video.duration)){
+                    video.currentTime=Math.max(0,Math.min(video.duration,
+                      video.currentTime+delta));}},
+                  seekFraction:function(fraction){if(isFinite(video.duration)
+                    &&video.duration>0)video.currentTime=video.duration*
+                      Math.max(0,Math.min(1,fraction));},
+                  speed:function(rate){video.playbackRate=rate;},
+                  cycleQuality:function(){if(!hls||!hls.levels.length)return;
+                    qualityIndex=qualityIndex>=hls.levels.length-1?-1:qualityIndex+1;
+                    hls.currentLevel=qualityIndex;
+                    var label=qualityIndex<0?'Auto':
+                      (hls.levels[qualityIndex].height||'?')+'p';
+                    log('QUALITY:'+label);},
+                  pause:function(){video.pause();}
+                };
+                function reportPosition(){
+                  if(video.readyState>0){
+                    log('POSITION:'+Number(video.currentTime||0).toFixed(2)+':'+
+                      Number(isFinite(video.duration)?video.duration:0).toFixed(2)+
+                      ':'+(video.paused?'1':'0'));
+                  }
+                }
+                setInterval(reportPosition,1000);
+                function update(){if(isFinite(video.duration)&&video.duration>0){
                    seek.value=Math.round(video.currentTime/video.duration*1000);
                  }document.getElementById('clock').textContent=clock(video.currentTime)+
                    ' / '+clock(video.duration);
