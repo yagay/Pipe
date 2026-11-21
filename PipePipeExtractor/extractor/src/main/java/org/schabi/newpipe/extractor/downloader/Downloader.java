@@ -167,6 +167,21 @@ public abstract class Downloader {
     }
 
     /**
+     * Bounded GET consumers (e.g. Supjav manifest probes) can read only their
+     * required bytes and close the response. Implementations should override
+     * this to avoid buffering an entire remote video in memory.
+     */
+    public StreamingResponse getStreaming(final String url,
+                                          @Nullable final Map<String, List<String>> headers)
+            throws IOException, ReCaptchaException {
+        final Response response = get(url, headers);
+        final byte[] bytes = response.rawResponseBody() == null
+                ? new byte[0] : response.rawResponseBody();
+        return new StreamingResponse(response.responseCode(), response.responseHeaders(),
+                new ByteArrayInputStream(bytes));
+    }
+
+    /**
      * Like {@link #post(String, Map, byte[], Localization)} but returns the body as a stream instead
      * of a buffered {@code byte[]}, so a large response (e.g. a SABR media batch, 50-150MB at 4K) is
      * not held whole in memory. The default falls back to the buffered {@code post()} and wraps its
