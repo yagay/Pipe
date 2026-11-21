@@ -4237,18 +4237,55 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
     //////////////////////////////////////////////////////////////////////////*/
     //region Popup menus ("popup" means that they pop up, not that they belong to the popup player)
 
+    private String playerStreamLabel(final VideoStream stream) {
+        if (stream != null && stream.getId() != null
+                && stream.getId().startsWith("SUPJAV|")) {
+            final String[] fields = stream.getId().split("\\\\|", 4);
+            if (fields.length > 2) {
+                return (fields[1].equals("Main") ? "" : fields[1] + " · ")
+                        + fields[2];
+            }
+        }
+        return stream == null ? "" : stream.getResolution();
+    }
+
     private void buildQualityMenu() {
         if (qualityPopupMenu == null) {
             return;
         }
         qualityPopupMenu.getMenu().removeGroup(POPUP_MENU_ID_QUALITY);
 
-        for (int i = 0; i < availableStreams.size(); i++) {
-            final VideoStream videoStream = availableStreams.get(i);
-            qualityPopupMenu.getMenu().add(POPUP_MENU_ID_QUALITY, i, Menu.NONE, videoStream.getCodec().toUpperCase().split("\\.")[0] + " " + videoStream.resolution);
+        final boolean supjavSources = !availableStreams.isEmpty()
+                && availableStreams.stream().allMatch(stream ->
+                        stream.getId() != null
+                        && stream.getId().startsWith("SUPJAV|"));
+        if (supjavSources) {
+            final java.util.Map<String, android.view.SubMenu> parts =
+                    new java.util.LinkedHashMap<>();
+            for (int i = 0; i < availableStreams.size(); i++) {
+                final VideoStream stream = availableStreams.get(i);
+                final String[] fields = stream.getId().split("\\\\|", 4);
+                final String part = fields.length > 1 ? fields[1] : "Main";
+                final String server = fields.length > 2 ? fields[2] : "Player";
+                android.view.SubMenu submenu = parts.get(part);
+                if (submenu == null) {
+                    submenu = qualityPopupMenu.getMenu().addSubMenu(
+                            Menu.NONE, -2000 - parts.size(), Menu.NONE, part);
+                    parts.put(part, submenu);
+                }
+                submenu.add(POPUP_MENU_ID_QUALITY, i, Menu.NONE,
+                        server + " · " + stream.getResolution());
+            }
+        } else {
+            for (int i = 0; i < availableStreams.size(); i++) {
+                final VideoStream videoStream = availableStreams.get(i);
+                qualityPopupMenu.getMenu().add(POPUP_MENU_ID_QUALITY, i, Menu.NONE,
+                        videoStream.getCodec().toUpperCase().split("\\\\.")[0]
+                                + " " + videoStream.resolution);
+            }
         }
         if (getSelectedVideoStream() != null) {
-            binding.qualityTextView.setText(getSelectedVideoStream().resolution);
+            binding.qualityTextView.setText(playerStreamLabel(getSelectedVideoStream()));
         }
         qualityPopupMenu.setOnMenuItemClickListener(this);
         qualityPopupMenu.setOnDismissListener(this);
@@ -4397,7 +4434,7 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
         }
         isSomePopupMenuVisible = false; //TODO check if this works
         if (getSelectedVideoStream() != null) {
-            binding.qualityTextView.setText(getSelectedVideoStream().resolution);
+            binding.qualityTextView.setText(playerStreamLabel(getSelectedVideoStream()));
         }
         if (isPlaying()) {
             hideControls(DEFAULT_CONTROLS_DURATION, 0);
