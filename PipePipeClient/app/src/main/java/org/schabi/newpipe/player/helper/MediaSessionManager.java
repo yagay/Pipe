@@ -230,7 +230,7 @@ public class MediaSessionManager {
             browserDurationMs = correctedDuration;
             updateMetadata();
         }
-        browserSpeed = Math.max(.25f, speed);
+        browserSpeed = Math.max(.1f, Math.min(10f, speed));
         updatePlaybackState();
     }
 
