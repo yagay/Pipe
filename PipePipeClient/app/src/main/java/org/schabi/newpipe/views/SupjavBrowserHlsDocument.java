@@ -74,6 +74,7 @@ public final class SupjavBrowserHlsDocument {
                 // video element through a single command interface.
                 var qualityIndex=-1;
                 window.PipeHls={
+                  play:function(){video.play().catch(function(){});},
                   toggle:function(){if(video.paused)video.play().catch(function(){});
                     else video.pause();},
                   seek:function(delta){if(isFinite(video.duration)){
