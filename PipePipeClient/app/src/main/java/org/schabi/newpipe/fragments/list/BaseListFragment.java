@@ -35,6 +35,7 @@ import org.schabi.newpipe.fragments.OnScrollBelowItemsListener;
 import org.schabi.newpipe.info_list.ItemViewMode;
 import org.schabi.newpipe.info_list.dialog.InfoItemDialog;
 import org.schabi.newpipe.info_list.InfoListAdapter;
+import org.schabi.newpipe.player.playqueue.PlayQueue;
 import org.schabi.newpipe.player.playqueue.SinglePlayQueue;
 import org.schabi.newpipe.util.NavigationHelper;
 import org.schabi.newpipe.util.OnClickGesture;
@@ -453,6 +454,15 @@ public abstract class BaseListFragment<I, N> extends BaseStateFragment<I>
         }
     }
 
+    /**
+     * Subclasses with paged website feeds may supply a queue which loads the
+     * original listing's next page. Other list types retain a local snapshot.
+     */
+    protected PlayQueue buildPagePlayQueue(final List<StreamInfoItem> streams,
+                                           final int selectedIndex) {
+        return new SinglePlayQueue(streams, selectedIndex);
+    }
+
     private void onStreamSelected(final StreamInfoItem selectedItem) {
         onItemSelected(selectedItem);
 
@@ -482,7 +492,7 @@ public abstract class BaseListFragment<I, N> extends BaseStateFragment<I>
 
         NavigationHelper.openVideoDetailFragment(requireContext(), getFM(),
                 selectedItem.getServiceId(), selectedItem.getUrl(), selectedItem.getName(),
-                new SinglePlayQueue(streams, selectedIndex), false);
+                buildPagePlayQueue(streams, selectedIndex), false);
     }
 
     protected void onScrollToBottom() {
