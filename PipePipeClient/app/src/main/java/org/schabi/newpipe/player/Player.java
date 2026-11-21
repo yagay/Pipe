@@ -4361,10 +4361,10 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
         if (simpleExoPlayer != null) {
             final Format active = simpleExoPlayer.getVideoFormat();
             if (active != null && active.height > 0) {
-                return "Auto · " + active.height + "p";
+                return active.height + "p";
             }
         }
-        return "Auto · Best";
+        return "Best";
     }
 
     private void buildQualityMenu() {
@@ -4374,7 +4374,7 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
         if (isAdaptiveVideoSource()) {
             readAdaptiveVideoQualities();
             qualityPopupMenu.getMenu().add(POPUP_MENU_ID_ADAPTIVE_VIDEO, -1,
-                    Menu.NONE, "Auto · Best");
+                    Menu.NONE, "Best");
             for (int i = 0; i < adaptiveVideoQualities.size(); i++) {
                 qualityPopupMenu.getMenu().add(POPUP_MENU_ID_ADAPTIVE_VIDEO, i,
                         Menu.NONE, adaptiveVideoQualities.get(i).label);
