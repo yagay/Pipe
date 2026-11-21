@@ -375,6 +375,47 @@ public final class DownloaderImpl extends Downloader {
     }
 
     /**
+     * Streaming GET for bounded HLS probes. The caller reads a small prefix
+     * and closes the stream; we never buffer arbitrary remote video files.
+     */
+    @Override
+    public StreamingResponse getStreaming(final String url,
+                                          @Nullable final Map<String, List<String>> headers)
+            throws IOException, ReCaptchaException {
+        final Map<String, List<String>> hdrs = headers == null
+                ? Collections.emptyMap() : headers;
+        final okhttp3.Request.Builder builder = new okhttp3.Request.Builder()
+                .get().url(url);
+        if (!hdrs.containsKey("User-Agent")) {
+            builder.header("User-Agent", USER_AGENT);
+        }
+        final String cookies = getCookies(url);
+        if (!hdrs.containsKey("Cookie") && !cookies.isEmpty()) {
+            builder.header("Cookie", cookies);
+        }
+        for (final Map.Entry<String, List<String>> entry : hdrs.entrySet()) {
+            final List<String> values = entry.getValue();
+            if (values.size() > 1) {
+                builder.removeHeader(entry.getKey());
+                for (final String v : values) builder.addHeader(entry.getKey(), v);
+            } else if (values.size() == 1) {
+                builder.header(entry.getKey(), values.get(0));
+            }
+        }
+        final okhttp3.Call call = client.newCall(builder.build());
+        call.timeout().timeout(12, TimeUnit.SECONDS);
+        final okhttp3.Response response = call.execute();
+        if (response.code() == 429) {
+            response.close();
+            throw new ReCaptchaException("reCaptcha Challenge requested", url);
+        }
+        final ResponseBody body = response.body();
+        final InputStream input = body == null
+                ? new ByteArrayInputStream(new byte[0]) : body.byteStream();
+        return new StreamingResponse(response.code(), response.headers().toMultimap(), input);
+    }
+
+    /**
      * Streaming POST: returns the body as a stream (okhttp {@code byteStream()}) instead of reading
      * it whole, so a large SABR media batch (50-150MB at 4K) is not buffered into one byte[] (that
      * was OOM-ing the 512MB heap). Mirrors execute()'s request building; caller closes the result.
