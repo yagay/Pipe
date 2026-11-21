@@ -4240,7 +4240,7 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
     private String playerStreamLabel(final VideoStream stream) {
         if (stream != null && stream.getId() != null
                 && stream.getId().startsWith("SUPJAV|")) {
-            final String[] fields = stream.getId().split("\\\\|", 4);
+            final String[] fields = stream.getId().split("\\|", 4);
             if (fields.length > 2) {
                 return (fields[1].equals("Main") ? "" : fields[1] + " · ")
                         + fields[2];
@@ -4253,7 +4253,7 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
         if (qualityPopupMenu == null) {
             return;
         }
-        qualityPopupMenu.getMenu().removeGroup(POPUP_MENU_ID_QUALITY);
+        qualityPopupMenu.getMenu().clear();
 
         final boolean supjavSources = !availableStreams.isEmpty()
                 && availableStreams.stream().allMatch(stream ->
@@ -4264,7 +4264,7 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
                     new java.util.LinkedHashMap<>();
             for (int i = 0; i < availableStreams.size(); i++) {
                 final VideoStream stream = availableStreams.get(i);
-                final String[] fields = stream.getId().split("\\\\|", 4);
+                final String[] fields = stream.getId().split("\\|", 4);
                 final String part = fields.length > 1 ? fields[1] : "Main";
                 final String server = fields.length > 2 ? fields[2] : "Player";
                 android.view.SubMenu submenu = parts.get(part);
