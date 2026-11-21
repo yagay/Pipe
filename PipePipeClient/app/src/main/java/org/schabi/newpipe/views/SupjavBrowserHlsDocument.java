@@ -52,9 +52,13 @@ public final class SupjavBrowserHlsDocument {
                     quality:function(index){
                       if(!hls||!Number.isInteger(index)||index< -1||
                          index>=hls.levels.length)return;
-                      qualityIndex=index;hls.currentLevel=index;
+                      // loadLevel is a conservative, non-flushing switch.
+                      // currentLevel flushes the buffer and can cause a black
+                      // screen when the selected CDN's next fragment is slow.
+                      qualityIndex=index;hls.loadLevel=index;
                       report('QUALITY:'+(index<0?'Auto':
-                        (hls.levels[index].height||'?')+'p'));
+                        (hls.levels[index].height?
+                          hls.levels[index].height+'p':'源画质')));
                     },
                     cycleQuality:function(){
                       if(!hls||!hls.levels.length)return;
@@ -128,15 +132,40 @@ public final class SupjavBrowserHlsDocument {
                     });
                     hls.on(Hls.Events.MANIFEST_PARSED,function(){
                       ready=true;report('MANIFEST_PARSED');
-                      // The known-working Supjav renderer starts with HLS.js ABR.
-                      // Forcing currentLevel to the maximum before the first
-                      // fragment can stall signed or slow CDNs indefinitely.
-                      // Keep the full manual quality list available in Pipe UI.
+                      // Select the HIGHEST variant actually present in THIS
+                      // server's manifest. No fixed 1080p/4K assumptions and
+                      // no automatic lowering when its bandwidth is slow.
+                      // Pick by resolution, breaking ties by bitrate. For a
+                      // single variant with no height, use its source bitrate.
+                      var highest=-1, bestArea=-1, bestBitrate=-1;
+                      hls.levels.forEach(function(level,index){
+                        var width=Number(level.width)||0;
+                        var height=Number(level.height)||0;
+                        var area=width>0&&height>0?width*height:height;
+                        var bitrate=Number(level.bitrate)||0;
+                        if(area>bestArea||(area===bestArea&&bitrate>bestBitrate)){
+                          highest=index;bestArea=area;bestBitrate=bitrate;
+                        }
+                      });
                       report('LEVELS:'+hls.levels.map(function(level){
                         return level.height||0;}).join(','));
-                      qualityIndex=-1;
-                      hls.currentLevel=-1;
-                      report('QUALITY:Auto');
+                      if(highest>=0){
+                        qualityIndex=highest;
+                        // Set the initial fragment quality BEFORE Hls.js starts
+                        // loading it, and keep subsequent fragments on it.
+                        // Unlike currentLevel this does not flush any buffer.
+                        hls.startLevel=highest;
+                        hls.loadLevel=highest;
+                        var selectedLevel=hls.levels[highest];
+                        report('QUALITY:'+(selectedLevel.height?
+                          selectedLevel.height+'p':'源画质'));
+                        report('NETWORK_DIAG:SOURCE_HIGHEST_LEVEL_'+highest
+                          +'_HEIGHT_'+(selectedLevel.height||0));
+                      }else{
+                        // A direct/source-only manifest exposes no alternatives.
+                        report('QUALITY:源画质');
+                        report('NETWORK_DIAG:NO_VARIANT_LEVELS');
+                      }
                       video.play().catch(function(){report('AUTOPLAY_RESTRICTED');});
                     });
                     hls.on(Hls.Events.ERROR,function(event,error){
