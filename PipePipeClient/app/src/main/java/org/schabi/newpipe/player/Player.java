@@ -653,6 +653,14 @@ public final class Player implements
                         supjavQualityLevels.clear();
                         supjavQualityLevels.addAll(heights);
                     }
+                    @Override public void onReady() {
+                        if (supjavHlsEngine == null) return;
+                        binding.loadingPanelWrapper.setVisibility(View.GONE);
+                        binding.playbackControlRoot.setVisibility(View.VISIBLE);
+                        currentState = STATE_PAUSED;
+                        supjavHlsPaused = true;
+                        notifyPlaybackUpdateToListeners();
+                    }
                     @Override public void onPlaying() {
                         if (supjavHlsEngine == null) return;
                         supjavHlsPaused = false;
@@ -691,6 +699,11 @@ public final class Player implements
                     }
                 });
         notifyQueueUpdateToListeners();
+        // The PlayerHolder listener is installed only after service connection
+        // returns. Deliver the queue again once it has been attached.
+        binding.getRoot().post(() -> {
+            if (supjavHlsEngine != null) notifyQueueUpdateToListeners();
+        });
         showOrHideButtons();
         openSupjavQueueItem(selectedUrl);
         DiagnosticLog.event("SUPJAV", "PLAYER_BINDING_START",
@@ -745,6 +758,14 @@ public final class Player implements
         supjavHlsDurationMs = 0;
         supjavHlsPaused = true;
         supjavQualityLevels.clear();
+        if (qualityPopupMenu != null) {
+            qualityPopupMenu.getMenu().clear();
+            qualityPopupMenu.setOnMenuItemClickListener(this);
+        }
+        if (playbackSpeedPopupMenu != null) {
+            playbackSpeedPopupMenu.getMenu().clear();
+            playbackSpeedPopupMenu.setOnMenuItemClickListener(this);
+        }
         if (supjavQueueActive && playQueue != null) {
             if (playQueueAdapter != null) {
                 playQueueAdapter.unsetSelectedListener();
@@ -879,14 +900,14 @@ public final class Player implements
                 new PlaybackSpeedClickListener(this, playbackSpeedPopupMenu).onClick(v);
                 return;
             }
-            final PopupMenu menu = new PopupMenu(context, binding.playbackSpeed);
+            // Reuse Pipe's own speed popup and dismiss behavior.
             final float[] speeds = {.75f, 1f, 1.25f, 1.5f, 2f};
+            playbackSpeedPopupMenu.getMenu().clear();
             for (int i = 0; i < speeds.length; i++) {
-                final float chosen = speeds[i];
-                menu.getMenu().add(0, i, i,
-                        String.format(java.util.Locale.ROOT, "%s×", chosen));
+                playbackSpeedPopupMenu.getMenu().add(0, i, i,
+                        String.format(java.util.Locale.ROOT, "%s×", speeds[i]));
             }
-            menu.setOnMenuItemClickListener(item -> {
+            playbackSpeedPopupMenu.setOnMenuItemClickListener(item -> {
                 final float value = speeds[item.getItemId()];
                 supjavHlsSpeed = value;
                 supjavHlsEngine.command("speed(" + value + ")");
@@ -895,7 +916,8 @@ public final class Player implements
                         "%s×", value));
                 return true;
             });
-            menu.show();
+            playbackSpeedPopupMenu.show();
+            isSomePopupMenuVisible = true;
         });
 
         binding.playbackSeekBar.setOnSeekBarChangeListener(this);
