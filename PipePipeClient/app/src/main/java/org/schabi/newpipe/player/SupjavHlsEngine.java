@@ -35,6 +35,7 @@ public final class SupjavHlsEngine {
         void onPosition(long positionMs, long durationMs, boolean paused);
         void onQuality(String label);
         void onPlaying();
+        void onEnded();
         void onFailure(String reason);
     }
 
@@ -266,6 +267,8 @@ public final class SupjavHlsEngine {
                     ready = true;
                     listener.onPlaying();
                     if (resolver != null) resolver.onPause();
+                } else if ("ENDED".equals(state)) {
+                    listener.onEnded();
                 } else if (state.startsWith("ERROR:")) {
                     DiagnosticLog.event("SUPJAV_ENGINE", "HLS_FAILED",
                             "code=" + state.substring(6));
