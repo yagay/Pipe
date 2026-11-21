@@ -142,6 +142,32 @@ public final class SupjavArchitectureTest {
     }
 
     @Test
+    public void browserVerifiedLucSourceIsBoundToExactCdAndOriginalServerToken() {
+        final String html = "<div class='btnst'>"
+                + "<a data-link='evsA'>EVS</a><a data-link='lucCD1'>LUC</a>"
+                + "<a data-link='evsB'>EVS</a><a data-link='lucCD2'>LUC</a></div>";
+        final List<SupjavServerCatalog.Entry> entries = SupjavServerCatalog.parse(
+                Jsoup.parse(html, DETAIL), DETAIL);
+        final SupjavServerCatalog.Entry cd1 = entries.get(1);
+        final SupjavServerCatalog.Entry cd2 = entries.get(3);
+        final String media = "https://cdn.example.com/hls2/master.m3u8?sig=xyz";
+        final String ref = "https://luluvdo.example.com/e/selected";
+        assertTrue(SupjavLucNativeCache.registerVerified(cd1, media, ref, false));
+        final VideoStream selected = SupjavLucNativeCache.find(cd1);
+        assertNotNull(selected);
+        assertTrue(selected.getContent().contains("sig=xyz"));
+        assertTrue(selected.getContent().endsWith("&origin=0"));
+        assertNull(SupjavLucNativeCache.find(cd2));
+        assertNull(SupjavLucNativeCache.find(
+                new SupjavServerCatalog.Entry(cd1.index, cd1.part,
+                        "LUC", "different-link", cd1.page)));
+        assertFalse(SupjavLucNativeCache.registerVerified(
+                entries.get(0), media, ref, true));
+        SupjavLucNativeCache.clear(cd1);
+        assertNull(SupjavLucNativeCache.find(cd1));
+    }
+
+    @Test
     public void voeRedirectsOnlyFollowDeclaredPlayerAndIgnoreGenericScripts() {
         final SupjavServerCatalog.Entry entry = new SupjavServerCatalog.Entry(
                 0, "Main", "VOE", "sample", DETAIL);
