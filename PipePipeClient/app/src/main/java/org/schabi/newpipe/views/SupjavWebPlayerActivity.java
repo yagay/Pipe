@@ -36,6 +36,7 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
     private static final String EXTRA_PAGE = "supjav_page";
     private static final String EXTRA_SERVER = "supjav_server";
     private int selectedServer = -1;
+    private int mediaRequestsSeen = 0;
     private boolean selectedApplied = false;
     private boolean selectionStarted = false;
     private final Handler selectionHandler = new Handler(Looper.getMainLooper());
@@ -59,6 +60,8 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
         final Intent intent = new Intent(context, SupjavWebPlayerActivity.class);
         intent.putExtra(EXTRA_PAGE, clean);
         intent.putExtra(EXTRA_SERVER, selectedIndex);
+        // Avoid stacking identical player activities on repeated extractor callbacks.
+        intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         context.startActivity(intent);
     }
 
@@ -106,6 +109,40 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
         CookieManager.getInstance().setAcceptThirdPartyCookies(browser, true);
 
         browser.setWebViewClient(new WebViewClient() {
+            @Override
+            public WebResourceResponse shouldInterceptRequest(final WebView view,
+                                                               final WebResourceRequest request) {
+                // Observe only. Returning null keeps the provider's real browser
+                // network transport, which works where native HTTP gets 403.
+                final Uri address = request.getUrl();
+                final String path = address.getPath() == null ? ""
+                        : address.getPath().toLowerCase(java.util.Locale.ROOT);
+                final boolean media = path.endsWith(".m3u8") || path.endsWith(".m3u")
+                        || path.endsWith(".mp4") || path.endsWith(".m4s")
+                        || path.endsWith(".ts")
+                        || path.matches(".*/hls[0-9]*/(?:master|index|playlist)[^/]*\\.txt");
+                if (media && mediaRequestsSeen < 16) {
+                    mediaRequestsSeen++;
+                    final String referer = request.getRequestHeaders().entrySet().stream()
+                            .filter(entry -> "Referer".equalsIgnoreCase(entry.getKey()))
+                            .map(java.util.Map.Entry::getValue)
+                            .findFirst().orElse("");
+                    final String refHost;
+                    try {
+                        refHost = Uri.parse(referer).getHost();
+                    } catch (final Exception ignored) {
+                        return null;
+                    }
+                    final String type = path.endsWith(".m3u8") || path.endsWith(".m3u")
+                            || path.endsWith(".txt") ? "manifest"
+                            : path.endsWith(".mp4") ? "mp4" : "segment";
+                    DiagnosticLog.event("SUPJAV_WEB", "MEDIA_REQUEST",
+                            "type=" + type + " host=" + address.getHost()
+                                    + " refererHost=" + refHost);
+                }
+                return null;
+            }
+
             @Override
             public void onPageFinished(final WebView view, final String loadedUrl) {
                 super.onPageFinished(view, loadedUrl);
@@ -293,6 +330,8 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         selectionHandler.removeCallbacksAndMessages(null);
+        DiagnosticLog.event("SUPJAV_WEB", "SESSION_END",
+                "mediaRequestsObserved=" + mediaRequestsSeen);
         hideFullScreen();
         if (browser != null) {
             browser.stopLoading();
