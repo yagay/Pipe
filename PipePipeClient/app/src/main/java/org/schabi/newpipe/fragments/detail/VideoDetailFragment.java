@@ -1625,6 +1625,16 @@ public final class VideoDetailFragment
                 "part=" + selected.part + " server=" + selected.provider
                         + " index=" + selected.index);
         final String target = SupjavServerCatalog.selectedUrl(detailUrl, selected.index);
+        // LUC's native manifest probes are refused by the provider (HTTP 403),
+        // while its real iframe works in Android WebView. Do not send this
+        // selected line through the failing extractor before playback.
+        if ("LUC".equalsIgnoreCase(selected.provider)) {
+            supjavPlayAfterSelection = false;
+            DiagnosticLog.event("SUPJAV", "LUC_DIRECT_BROWSER",
+                    "part=" + selected.part + " index=" + selected.index);
+            SupjavWebPlayerActivity.open(requireContext(), target);
+            return;
+        }
         if (target.equals(url) && currentInfo != null
                 && !currentInfo.getVideoStreams().isEmpty()) {
             openVideoPlayerAutoFullscreen();
