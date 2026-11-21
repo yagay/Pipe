@@ -407,7 +407,7 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
         nativePlayer.addListener(new Player.Listener() {
             @Override
             public void onPlayerError(final PlaybackException error) {
-                final String errorCode = error.errorCodeName;
+                final String errorCode = error.getErrorCodeName();
                 DiagnosticLog.event("SUPJAV_WEB", "NATIVE_HANDOFF_FAILED",
                         "errorCode=" + errorCode + " mediaHost=" + Uri.parse(manifest).getHost());
                 Toast.makeText(SupjavWebPlayerActivity.this,
