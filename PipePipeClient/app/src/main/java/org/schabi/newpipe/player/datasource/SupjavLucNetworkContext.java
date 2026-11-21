@@ -111,7 +111,7 @@ public final class SupjavLucNetworkContext {
             final OkHttpClient client = DownloaderImpl.getInstance().getClient()
                     .newBuilder().callTimeout(12, TimeUnit.SECONDS)
                     // Never forward a cookie from a player host to a redirect host.
-                    .addInterceptor(chain -> {
+                    .addNetworkInterceptor(chain -> {
                         final Request original = chain.request();
                         final Request.Builder builder = original.newBuilder();
                         final String cookie = cookiesForRequest(original.url().toString());
