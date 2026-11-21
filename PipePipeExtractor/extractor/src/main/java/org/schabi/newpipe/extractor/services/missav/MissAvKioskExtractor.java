@@ -80,7 +80,8 @@ public final class MissAvKioskExtractor extends KioskExtractor<StreamInfoItem> {
                 continue;
             }
             // Category/directory links are often image-backed too; accept only video IDs.
-            if (!MissAvParsingHelper.isVideoId(id) || !seenIds.add(id)) {
+            if (!MissAvParsingHelper.isVideoId(id)
+                    || MissAvBrowseCatalog.isBrowsePage(href) || !seenIds.add(id)) {
                 continue;
             }
             collector.commit(new MissAvKioskInfoItemExtractor(link));
