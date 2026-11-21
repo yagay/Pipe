@@ -4463,8 +4463,11 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
     }
 
     private boolean isAdaptiveVideoSource() {
-        if (availableStreams == null || availableStreams.size() != 1) return false;
-        final DeliveryMethod method = availableStreams.get(0).getDeliveryMethod();
+        // The selected media, not the number of alternative source URLs, owns
+        // Media3's HLS/DASH tracks. EVS/FST can expose multiple HLS URLs.
+        final VideoStream selected = getSelectedVideoStream();
+        if (selected == null) return false;
+        final DeliveryMethod method = selected.getDeliveryMethod();
         return method == DeliveryMethod.HLS || method == DeliveryMethod.DASH;
     }
 
@@ -4513,6 +4516,18 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
             for (int i = 0; i < adaptiveVideoQualities.size(); i++) {
                 qualityPopupMenu.getMenu().add(POPUP_MENU_ID_ADAPTIVE_VIDEO, i,
                         Menu.NONE, adaptiveVideoQualities.get(i).label);
+            }
+            // A host can offer several independent HLS source URLs, each
+            // containing its own adaptive renditions. Keep both choices.
+            if (availableStreams != null && availableStreams.size() > 1) {
+                for (int i = 0; i < availableStreams.size(); i++) {
+                    final VideoStream source = availableStreams.get(i);
+                    final String label = source.getResolution();
+                    qualityPopupMenu.getMenu().add(POPUP_MENU_ID_QUALITY, i,
+                            Menu.NONE, "Source " + (i + 1)
+                                    + (label == null || label.equalsIgnoreCase("Auto")
+                                    ? "" : " · " + label));
+                }
             }
             binding.qualityTextView.setText(adaptiveQualityButtonLabel());
         } else {
@@ -4748,8 +4763,9 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
         }
         if (menuItem.getGroupId() == POPUP_MENU_ID_QUALITY) {
             final int menuItemIndex = menuItem.getItemId();
-            if (selectedStreamIndex == menuItemIndex || availableStreams == null
-                    || availableStreams.size() <= menuItemIndex) {
+            if (availableStreams == null || menuItemIndex < 0
+                    || availableStreams.size() <= menuItemIndex
+                    || selectedStreamIndex == menuItemIndex) {
                 return true;
             }
 
