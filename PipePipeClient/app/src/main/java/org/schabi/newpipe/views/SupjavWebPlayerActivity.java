@@ -50,6 +50,7 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
     private volatile String observedManifest;
     private volatile String observedReferer;
     private WebView embeddedHls;
+    private FrameLayout embeddedContainer;
     private boolean embeddedReady;
     private boolean embeddedAttempted;
     private boolean allowAutoHls;
@@ -435,9 +436,12 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
                 return true;
             }
         });
-        root.addView(player, new FrameLayout.LayoutParams(
+        embeddedContainer = new FrameLayout(this);
+        root.addView(embeddedContainer, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        player.bringToFront();
+        embeddedContainer.addView(player, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        embeddedContainer.bringToFront();
         final TextView close = new TextView(this);
         close.setText("‹  Website player");
         close.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
@@ -445,7 +449,7 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
         close.setBackgroundColor(0xCC111111);
         close.setGravity(Gravity.CENTER);
         close.setOnClickListener(v -> closeEmbeddedHls());
-        player.addView(close, new FrameLayout.LayoutParams(
+        embeddedContainer.addView(close, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(48), Gravity.TOP));
         DiagnosticLog.event("SUPJAV_HLS", "START",
                 "mediaHost=" + Uri.parse(manifest).getHost()
@@ -464,15 +468,18 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
     private void closeEmbeddedHls() {
         hlsHandler.removeCallbacksAndMessages(null);
         final WebView player = embeddedHls;
+        final FrameLayout overlay = embeddedContainer;
         embeddedHls = null;
+        embeddedContainer = null;
         embeddedReady = false;
         if (player != null) {
             player.onPause();
             player.stopLoading();
             player.loadUrl("about:blank");
-            if (root != null) root.removeView(player);
+            if (overlay != null) overlay.removeView(player);
             player.destroy();
         }
+        if (root != null && overlay != null) root.removeView(overlay);
         if (browser != null) browser.onResume();
     }
 
