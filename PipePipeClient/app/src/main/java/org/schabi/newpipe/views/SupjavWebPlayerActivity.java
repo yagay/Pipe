@@ -31,6 +31,9 @@ import org.schabi.newpipe.extractor.services.extended.supjav.SupjavServerCatalog
  */
 public final class SupjavWebPlayerActivity extends AppCompatActivity {
     private static final String EXTRA_PAGE = "supjav_page";
+    private static final String EXTRA_SERVER = "supjav_server";
+    private int selectedServer = -1;
+    private boolean selectedApplied = false;
     private FrameLayout root;
     private LinearLayout content;
     private WebView browser;
@@ -38,6 +41,11 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
     private WebChromeClient.CustomViewCallback fullscreenCallback;
 
     public static void open(final Context context, final String page) {
+        open(context, page, SupjavServerCatalog.selectedIndex(page));
+    }
+
+    /** Open the selected website player, preserving its normal browser flow. */
+    public static void open(final Context context, final String page, final int selectedIndex) {
         final String clean = SupjavServerCatalog.pageUrl(page);
         if (!clean.matches("https://(?:www\\.)?supjav\\.com/[0-9]+\\.html")) {
             Toast.makeText(context, "Invalid Supjav video page", Toast.LENGTH_SHORT).show();
@@ -45,6 +53,7 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
         }
         final Intent intent = new Intent(context, SupjavWebPlayerActivity.class);
         intent.putExtra(EXTRA_PAGE, clean);
+        intent.putExtra(EXTRA_SERVER, selectedIndex);
         context.startActivity(intent);
     }
 
@@ -56,6 +65,9 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
             finish();
             return;
         }
+
+        selectedServer = getIntent().getIntExtra(EXTRA_SERVER, -1);
+        if (selectedServer < 0 || selectedServer >= 80) selectedServer = -1;
 
         root = new FrameLayout(this);
         content = new LinearLayout(this);
@@ -89,6 +101,32 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
         CookieManager.getInstance().setAcceptThirdPartyCookies(browser, true);
 
         browser.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageFinished(final WebView view, final String loadedUrl) {
+                super.onPageFinished(view, loadedUrl);
+                if (selectedApplied || selectedServer < 0 || !url.equals(loadedUrl)) {
+                    return;
+                }
+                selectedApplied = true;
+                // The user explicitly selected this server in Pipe. Trigger the
+                // site's own player button rather than constructing guessed CDNs,
+                // bypassing challenges or injecting arbitrary media URLs.
+                final int index = selectedServer;
+                final String selector = ".btn-server[data-link],.btnst a[data-link],"
+                        + ".btns a[data-link],#server-list [data-link],"
+                        + ".server-list [data-link],.servers [data-link],"
+                        + "[data-server][data-link]";
+                final String script = "(function(){const items=Array.from("
+                        + "document.querySelectorAll('" + selector + "'));"
+                        + "const unique=items.filter((x,i)=>items.findIndex(y=>"
+                        + "y.getAttribute('data-link')===x.getAttribute('data-link'))===i);"
+                        + "if(unique[" + index + "]){unique[" + index + "].click();"
+                        + "return 'selected';}return 'missing';})()";
+                view.evaluateJavascript(script, result ->
+                        DiagnosticLog.event("SUPJAV_WEB", "SELECTED_SERVER",
+                                "index=" + index + " result=" + result));
+            }
+
             @Override
             public boolean shouldOverrideUrlLoading(final WebView view,
                                                      final WebResourceRequest request) {
