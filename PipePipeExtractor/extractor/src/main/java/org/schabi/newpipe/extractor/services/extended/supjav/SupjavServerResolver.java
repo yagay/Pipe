@@ -53,6 +53,11 @@ final class SupjavServerResolver {
             throw new ParsingException("Selected Supjav server is not on this page");
         }
         final SupjavServerCatalog.Entry selected = entries.get(selectedIndex);
+        // Match the standalone Supjav resolver: native LUC is allowed only
+        // after an actual media probe succeeds. A plausible signed URL is not
+        // sufficient when its host rejects native HTTP with 403.
+        final boolean luc = "LUC".equalsIgnoreCase(selected.provider);
+        final int probeLimit = luc ? MAX_CANDIDATES : MAX_PROBES;
         final String start = SupjavProviderExtractor.resolveDeclaredUrl(selected.link, detailUrl);
         if (start == null) {
             throw new ParsingException("Supjav " + selected.label()
@@ -138,25 +143,37 @@ final class SupjavServerResolver {
         int probes = 0;
         final List<String> probeDetails = new ArrayList<>();
         for (final VideoStream candidate : candidates.values()) {
-            final SupjavMediaProbe.Assessment check = probes++ < MAX_PROBES
+            final SupjavMediaProbe.Assessment check = probes < probeLimit
+                    && System.nanoTime() < deadline
                     ? SupjavMediaProbe.assess(candidate)
                     : new SupjavMediaProbe.Assessment(
                             SupjavMediaProbe.Status.UNKNOWN, "not-probed");
+            probes++;
             // These diagnostics omit full URLs and tokens by design.
             if (probeDetails.size() < 8) {
                 probeDetails.add(check.status.name() + "(" + check.profiles + ")");
             }
             if (check.status == SupjavMediaProbe.Status.PLAYABLE) {
                 playable.add(candidate);
+                // The standalone app returns the first verified LUC source,
+                // preserving its declared hls2 > hls4 > hls3 priority.
+                // Unchecked/blocked variants must never displace it.
+                if (luc) break;
             } else if (check.status == SupjavMediaProbe.Status.BLOCKED) {
                 confirmedBlocked++;
             } else {
                 unknown.add(candidate);
             }
         }
-        playable.addAll(unknown);
+        if (!luc) {
+            // Preserve established VAS/EVS/VOE behavior. Unknown sources are
+            // still offered on those paths exactly as in the stable baseline.
+            playable.addAll(unknown);
+        }
         if (playable.isEmpty()) {
             final String reason = verification ? "requires browser verification"
+                    : luc && confirmedBlocked > 0
+                        ? "LUC declared media refused native HTTP; website player required"
                     : confirmedBlocked > 0 ? "media returned HTTP error or invalid response"
                     : lastHttp == 403 || lastHttp == 429 ? "access refused (HTTP " + lastHttp + ")"
                     : "requires JavaScript or browser player";
