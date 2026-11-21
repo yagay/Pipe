@@ -65,6 +65,7 @@ import org.schabi.newpipe.extractor.StreamingService;
 import org.schabi.newpipe.extractor.exceptions.ExtractionException;
 import org.schabi.newpipe.extractor.exceptions.ReCaptchaException;
 import org.schabi.newpipe.extractor.services.peertube.PeertubeInstance;
+import org.schabi.newpipe.extractor.services.missav.MissAvService;
 import org.schabi.newpipe.fragments.BackPressable;
 import org.schabi.newpipe.fragments.MainFragment;
 import org.schabi.newpipe.fragments.detail.VideoDetailFragment;
@@ -97,6 +98,8 @@ public class MainActivity extends AppCompatActivity {
     private ActionBarDrawerToggle toggle;
 
     private boolean servicesShown = false;
+    // Keep the displayed kiosk IDs stable: a HashMap-backed KioskList has no UI order.
+    private final List<String> drawerKioskIds = new ArrayList<>();
 
     private BroadcastReceiver broadcastReceiver;
 
@@ -105,6 +108,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int ITEM_ID_BOOKMARKS = -3;
     private static final int ITEM_ID_DOWNLOADS = -4;
     private static final int ITEM_ID_HISTORY = -5;
+    private static final int ITEM_ID_HOME = -6;
     private static final int ITEM_ID_SETTINGS = 0;
     private static final int ITEM_ID_ABOUT = 1;
     // Drawer item IDs must not overlap service IDs. Service IDs are persisted and may grow as
@@ -223,14 +227,23 @@ public class MainActivity extends AppCompatActivity {
         final int currentServiceId = ServiceHelper.getSelectedServiceId(this);
         final StreamingService service = NewPipe.getService(currentServiceId);
 
-        int kioskIndex = 0;
-
-        for (final String ks : service.getKioskList().getAvailableKiosks()) {
+        drawerKioskIds.clear();
+        if (service instanceof MissAvService) {
+            // MissAV website channels, categories and filters belong to the page header.
+            // Do not duplicate them (or the three default kiosks) in the global drawer.
             drawerLayoutBinding.navigation.getMenu()
-                    .add(R.id.menu_tabs_group, ITEM_ID_KIOSK_BASE + kioskIndex, 0, KioskTranslator
-                            .getTranslatedKioskName(ks, this))
-                    .setIcon(KioskTranslator.getKioskIcon(ks));
-            kioskIndex++;
+                    .add(R.id.menu_tabs_group, ITEM_ID_HOME, ORDER, "Home")
+                    .setIcon(R.drawable.ic_home);
+        } else {
+            drawerKioskIds.addAll(service.getKioskList().getAvailableKiosks());
+            java.util.Collections.sort(drawerKioskIds);
+            for (int kioskIndex = 0; kioskIndex < drawerKioskIds.size(); kioskIndex++) {
+                final String ks = drawerKioskIds.get(kioskIndex);
+                drawerLayoutBinding.navigation.getMenu()
+                        .add(R.id.menu_tabs_group, ITEM_ID_KIOSK_BASE + kioskIndex, ORDER,
+                                KioskTranslator.getTranslatedKioskName(ks, this))
+                        .setIcon(KioskTranslator.getKioskIcon(ks));
+            }
         }
 
         drawerLayoutBinding.navigation.getMenu()
@@ -297,6 +310,9 @@ public class MainActivity extends AppCompatActivity {
 
     private void tabSelected(final MenuItem item) throws ExtractionException {
         switch (item.getItemId()) {
+            case ITEM_ID_HOME:
+                NavigationHelper.openMainFragment(getSupportFragmentManager());
+                break;
             case ITEM_ID_SUBSCRIPTIONS:
                 NavigationHelper.openSubscriptionFragment(getSupportFragmentManager());
                 break;
@@ -316,15 +332,13 @@ public class MainActivity extends AppCompatActivity {
                 if (item.getItemId() < ITEM_ID_KIOSK_BASE) {
                     return;
                 }
-                final int currentServiceId = ServiceHelper.getSelectedServiceId(this);
-                final StreamingService service = NewPipe.getService(currentServiceId);
-                String serviceName = "";
-
-                int kioskIndex = 0;
-                for (final String ks : service.getKioskList().getAvailableKiosks()) {
-                    if (ITEM_ID_KIOSK_BASE + kioskIndex == item.getItemId()) {
-                        serviceName = ks;
-                        break;
+                final int kioskIndex = item.getItemId() - ITEM_ID_KIOSK_BASE;
+                if (kioskIndex >= 0 && kioskIndex < drawerKioskIds.size()) {
+                    NavigationHelper.openKioskFragment(getSupportFragmentManager(),
+                            ServiceHelper.getSelectedServiceId(this),
+                            drawerKioskIds.get(kioskIndex));
+                }
+                break;
                     }
                     kioskIndex++;
                 }
