@@ -401,24 +401,37 @@ public class PlayerDataSource {
 
     public HlsMediaSource.Factory getSupjavHlsMediaSourceFactory(
             @Nullable final String pageReferer) {
-        return new HlsMediaSource.Factory(supjavDataSourceFactory(pageReferer))
+        return getSupjavHlsMediaSourceFactory(pageReferer, true);
+    }
+
+    public HlsMediaSource.Factory getSupjavHlsMediaSourceFactory(
+            @Nullable final String pageReferer, final boolean includeOrigin) {
+        return new HlsMediaSource.Factory(
+                supjavDataSourceFactory(pageReferer, includeOrigin))
                 .setAllowChunklessPreparation(true);
     }
 
     public ProgressiveMediaSource.Factory getSupjavProgressiveMediaSourceFactory(
             @Nullable final String pageReferer) {
-        return new ProgressiveMediaSource.Factory(supjavDataSourceFactory(pageReferer))
+        return getSupjavProgressiveMediaSourceFactory(pageReferer, true);
+    }
+
+    public ProgressiveMediaSource.Factory getSupjavProgressiveMediaSourceFactory(
+            @Nullable final String pageReferer, final boolean includeOrigin) {
+        return new ProgressiveMediaSource.Factory(
+                supjavDataSourceFactory(pageReferer, includeOrigin))
                 .setContinueLoadingCheckIntervalBytes(continueLoadingCheckIntervalBytes);
     }
 
-    private DataSource.Factory supjavDataSourceFactory(@Nullable final String pageReferer) {
+    private DataSource.Factory supjavDataSourceFactory(
+            @Nullable final String pageReferer, final boolean includeOrigin) {
         final String ref = pageReferer != null && pageReferer.startsWith("https://")
                 ? pageReferer : "https://supjav.com/";
         final Map<String, String> headers = new HashMap<>();
         headers.put("Referer", ref);
         headers.put("Accept", "*/*");
         final android.net.Uri parsed = android.net.Uri.parse(ref);
-        if (parsed.getScheme() != null && parsed.getHost() != null) {
+        if (includeOrigin && parsed.getScheme() != null && parsed.getHost() != null) {
             headers.put("Origin", parsed.getScheme() + "://" + parsed.getHost());
         }
         // Some Supjav mirrors reject Origin even though the same signed media
