@@ -137,6 +137,39 @@ public final class SiteBrowseCatalog {
             "SpankBang", "xHamster", "XVideos", "EPORNER", "MRDOUGA",
             "OHentai", "XNXX", "141tube", "Avgle.net", "Hanime1.me", "JAV-FUN.cc", "Supjav"));
 
+    // Standalone website sections (for example FC2) are permitted only after
+    // they have been discovered as real navigation links on Supjav itself.
+    private static final Set<String> SUPJAV_DISCOVERED_ROUTES =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    private static boolean supjavStandaloneRoute(final String url) {
+        try {
+            final URI uri = new URI(url);
+            final String path = uri.getPath().replaceAll("/+$", "");
+            if (path.isEmpty() || path.equals("/")) return false;
+            final String[] parts = path.replaceFirst("^/", "").split("/");
+            final int offset = parts.length > 1
+                    && (parts[0].equalsIgnoreCase("en")
+                    || parts[0].equalsIgnoreCase("ja")
+                    || parts[0].equalsIgnoreCase("zh")) ? 1 : 0;
+            if (parts.length != offset + 1) return false;
+            final String slug = parts[offset].toLowerCase(Locale.ROOT);
+            return slug.matches("[a-z][a-z0-9-]{1,45}")
+                    && !slug.matches("(?i)(?:login|register|account|profile|user|search|"
+                    + "member|premium|vip|payment|category|tag|cast|maker|genre|"
+                    + "page|wp-admin|wp-login|feed|rss|contact|about|privacy|terms)");
+        } catch (final Exception ignored) {
+            return false;
+        }
+    }
+
+    private static boolean discoveredSupjavBrowse(final String url) {
+        final String clean = url.split("[?#]", 2)[0].replaceAll("/+$", "");
+        if (SUPJAV_DISCOVERED_ROUTES.contains(clean)) return true;
+        final String base = clean.replaceFirst("/page/[0-9]+$", "");
+        return !base.equals(clean) && SUPJAV_DISCOVERED_ROUTES.contains(base);
+    }
+
     private static final class CategoryCache {
         final List<Entry> entries;
         final long updated;
@@ -172,6 +205,7 @@ public final class SiteBrowseCatalog {
                 final int off = parts.length > 1
                         && (parts[0].equals("en") || parts[0].equals("zh")
                             || parts[0].equals("ja")) ? 1 : 0;
+                if (discoveredSupjavBrowse(url)) return true;
                 if (parts.length <= off + 1) return false;
                 final String root = parts[off];
                 final boolean validRoot = root.equals("category") || root.equals("tag")
@@ -347,45 +381,55 @@ public final class SiteBrowseCatalog {
             throws IOException, ExtractionException {
         final Map<String, Entry> found = new LinkedHashMap<>();
         int succeeded = 0;
-        // These are directory *indexes*, not preselected categories. Only
-        // advertise real destinations linked by the site's HTML.
+        // Indexes are discovery locations only: never fabricate an FC2 URL.
         final String[] directories = {
                 "/", "/category/", "/tag/", "/cast/", "/maker/",
                 "/category/cast/", "/category/maker/"
         };
-        for (final String dir : directories) {
+        for (final String directory : directories) {
             try {
-                final Document page = fetchSitePage(service, service.getBaseUrl() + dir);
+                final Document page = fetchSitePage(service, service.getBaseUrl() + directory);
                 succeeded++;
                 for (final Element anchor : page.select("a[href]")) {
-                    final String url = anchor.absUrl("href");
-                    if (!isWebsiteBrowseUrl(service, url)) continue;
+                    final String raw = anchor.absUrl("href");
+                    if (!sameSite(service.getBaseUrl(), raw)) continue;
+                    final String clean = raw.split("[?#]", 2)[0].replaceAll("/+$", "");
+                    if (clean.isEmpty() || clean.matches("(?i).*\\/\\d+\\.html")
+                            || clean.contains("/page/")) continue;
+                    final boolean normalCategory = isWebsiteBrowseUrl(service, clean);
+                    final boolean inNavigation = anchor.closest(
+                            "nav,header,aside,.menu,.nav,.navbar,.categories,"
+                            + ".category-list,.cat-list,.dropdown,.sidebar") != null;
+                    // Single-segment channels are exposed only when linked
+                    // from site navigation, never from arbitrary content cards.
+                    final boolean standalone = "/".equals(directory) && inNavigation
+                            && supjavStandaloneRoute(clean);
+                    if (!normalCategory && !standalone) continue;
                     String label = anchor.text().replaceAll("\\s+", " ").trim();
-                    // Image-only directory cards often have no anchor text.
                     if (label.isEmpty()) {
                         final Element image = anchor.selectFirst("img[alt]");
                         if (image != null) label = image.attr("alt").trim();
                     }
-                    if (label.isEmpty()) {
-                        final Element heading = anchor.selectFirst("[title],h2,h3,.title");
-                        if (heading != null) label = heading.hasAttr("title")
-                                ? heading.attr("title").trim() : heading.text().trim();
+                    if (label.isEmpty() && anchor.hasAttr("title")) {
+                        label = anchor.attr("title").trim();
                     }
                     if (label.length() < 2 || label.length() > 52) continue;
-                    final String clean = url.split("#", 2)[0];
-                    final String path = java.net.URI.create(clean).getPath().toLowerCase(Locale.ROOT);
-                    if (path.contains("/page/")) continue;
+                    if (standalone) SUPJAV_DISCOVERED_ROUTES.add(clean);
+                    final String path = URI.create(clean).getPath().toLowerCase(Locale.ROOT);
                     final String kind = path.contains("/cast/") ? "Cast"
                             : path.contains("/maker/") ? "Maker"
-                            : path.contains("/tag/") ? "Tag" : "Category";
+                            : path.contains("/tag/") ? "Tag"
+                            : standalone ? "Channel" : "Category";
                     found.putIfAbsent(clean, new Entry("category:" + clean,
                             kind + " / " + label, clean));
                 }
             } catch (final Exception ignored) {
-                // One unavailable directory must not erase the other categories.
+                // An unavailable index must not erase other usable categories.
             }
         }
-        if (succeeded == 0 && previous != null) return previous.entries;
+        if ((succeeded == 0 || found.isEmpty()) && previous != null) {
+            return previous.entries;
+        }
         if (succeeded == 0) {
             throw new IOException("Supjav category directories unavailable");
         }
