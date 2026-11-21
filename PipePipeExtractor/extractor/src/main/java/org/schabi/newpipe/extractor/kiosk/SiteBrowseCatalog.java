@@ -167,6 +167,25 @@ public final class SiteBrowseCatalog {
             if (path.matches(".*/(?:actors?|actresses|pornstars?|performers?|models?|members?|login|register|account|users?|profiles?|playlists?|premium|vip|payment|search)/?.*")) {
                 return false;
             }
+            if ("Supjav".equals(service.getServiceInfo().getName())) {
+                final String[] parts = path.replaceAll("^/|/$", "").split("/");
+                final int off = parts.length > 1
+                        && (parts[0].equals("en") || parts[0].equals("zh")
+                            || parts[0].equals("ja")) ? 1 : 0;
+                if (parts.length <= off + 1) return false;
+                final String root = parts[off];
+                final boolean validRoot = root.equals("category") || root.equals("tag")
+                        || root.equals("cast") || root.equals("maker") || root.equals("genre");
+                if (!validRoot) return false;
+                final int count = parts.length - off;
+                if (count == 2 && !parts[off + 1].equals("page")) return true;
+                if (count == 3 && root.equals("category")
+                        && (parts[off + 1].equals("cast")
+                            || parts[off + 1].equals("maker"))) return true;
+                return count >= 4 && count <= 5
+                        && parts[count - 2].equals("page")
+                        && parts[count - 1].matches("[0-9]+");
+            }
             // Pornhub's category navigation uses /video?c=<id>. Do not
             // accidentally accept a regular video detail or search page.
             if ("Pornhub".equals(service.getServiceInfo().getName())
@@ -262,6 +281,9 @@ public final class SiteBrowseCatalog {
                 && System.currentTimeMillis() - previous.updated < CATEGORY_TTL_MS) {
             return previous.entries;
         }
+        if ("Supjav".equals(service.getServiceInfo().getName())) {
+            return getSupjavCategories(service, key, previous);
+        }
         try {
             final String home = service instanceof EightyFivePoService
                     ? EightyFivePoParsingHelper.BASE_URL + "/ja/"
@@ -314,6 +336,49 @@ public final class SiteBrowseCatalog {
             throw e;
         }
         }
+    }
+
+
+    private static List<Entry> getSupjavCategories(final StreamingService service,
+                                                    final int key,
+                                                    final CategoryCache previous)
+            throws IOException, ExtractionException {
+        final Map<String, Entry> found = new LinkedHashMap<>();
+        int succeeded = 0;
+        final String[] directories = {
+                "/", "/category/", "/tag/", "/cast/", "/maker/",
+                "/category/cast/", "/category/maker/"
+        };
+        for (final String dir : directories) {
+            try {
+                final Document page = fetchSitePage(service, service.getBaseUrl() + dir);
+                succeeded++;
+                for (final Element anchor : page.select("a[href]")) {
+                    final String url = anchor.absUrl("href");
+                    if (!isWebsiteBrowseUrl(service, url)) continue;
+                    final String label = anchor.text().replaceAll("\\s+", " ").trim();
+                    if (label.length() < 2 || label.length() > 52) continue;
+                    final String clean = url.split("#", 2)[0];
+                    final String path = java.net.URI.create(clean).getPath().toLowerCase(Locale.ROOT);
+                    if (path.contains("/page/")) continue;
+                    final String kind = path.contains("/cast/") ? "Cast"
+                            : path.contains("/maker/") ? "Maker"
+                            : path.contains("/tag/") ? "Tag" : "Category";
+                    found.putIfAbsent(clean, new Entry("category:" + clean,
+                            kind + " / " + label, clean));
+                }
+            } catch (final Exception ignored) {
+                // One unavailable directory must not erase the other categories.
+            }
+        }
+        if (succeeded == 0 && previous != null) return previous.entries;
+        if (succeeded == 0) {
+            throw new IOException("Supjav category directories unavailable");
+        }
+        final List<Entry> result = Collections.unmodifiableList(
+                new ArrayList<>(found.values()));
+        CATEGORY_CACHE.put(key, new CategoryCache(result));
+        return result;
     }
 
     /**
