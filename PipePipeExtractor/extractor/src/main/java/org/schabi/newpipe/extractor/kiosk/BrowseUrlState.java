@@ -50,6 +50,47 @@ public final class BrowseUrlState {
     }
 
     /**
+     * Carry active filter and sort parameters to a pagination link that omitted
+     * them. Never carry options to another host or an unrelated category path.
+     */
+    public static String carryOptionsToNextPage(final String current, final String next) {
+        try {
+            final URI a = new URI(current);
+            final URI b = new URI(next);
+            if (a.getScheme() == null || b.getScheme() == null
+                    || !a.getScheme().equalsIgnoreCase(b.getScheme())
+                    || a.getHost() == null || b.getHost() == null
+                    || !a.getHost().equalsIgnoreCase(b.getHost())
+                    || a.getPort() != b.getPort()
+                    || !basePaginationPath(a.getPath()).equals(basePaginationPath(b.getPath()))) {
+                return next;
+            }
+            final List<String> result = new ArrayList<>(parts(b.getRawQuery()));
+            for (final OptionGroup group : OptionGroup.values()) {
+                if (groupParts(b.getRawQuery(), group).isEmpty()) {
+                    result.addAll(groupParts(a.getRawQuery(), group));
+                }
+            }
+            final StringBuilder url = new StringBuilder();
+            url.append(b.getScheme()).append("://").append(b.getRawAuthority())
+                    .append(b.getRawPath());
+            if (!result.isEmpty()) {
+                url.append('?').append(String.join("&", result));
+            }
+            return url.toString();
+        } catch (final URISyntaxException ignored) {
+            return next;
+        }
+    }
+
+    private static String basePaginationPath(final String path) {
+        if (path == null) {
+            return "";
+        }
+        return path.replaceFirst("(?i)/page/[0-9]+/?$", "").replaceFirst("/+$", "");
+    }
+
+    /**
      * Compare category identity while ignoring sort, filter and page parameters.
      * Query-based categories (for example /video?c=3) must remain distinct.
      */
