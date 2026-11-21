@@ -386,6 +386,79 @@ public final class ListHelper {
 
 
     /**
+     * Choose the highest actual video quality across all sites from the
+     * source's already available video streams. A missing resolution must
+     * never outrank a known 720p/1080p/2160p stream.
+     *
+     * For equal height prefer high frame rate, then source bitrate, then a
+     * supported codec. This is used only when the app preference is "Best".
+     */
+    public static int getHighestAvailableVideoStreamIndex(
+            @Nullable final List<VideoStream> streams) {
+        if (streams == null || streams.isEmpty()) return -1;
+        int best = 0;
+        for (int i = 1; i < streams.size(); i++) {
+            if (compareBestVideoStream(streams.get(i), streams.get(best)) > 0) {
+                best = i;
+            }
+        }
+        return best;
+    }
+
+    private static int compareBestVideoStream(final VideoStream first,
+                                              final VideoStream second) {
+        final int resolution = Integer.compare(
+                bestStreamHeight(first.getResolution()),
+                bestStreamHeight(second.getResolution()));
+        if (resolution != 0) return resolution;
+
+        final int fps = Integer.compare(
+                bestStreamFps(first.getResolution()),
+                bestStreamFps(second.getResolution()));
+        if (fps != 0) return fps;
+
+        final int bitrate = Integer.compare(
+                Math.max(0, first.getBitrate()), Math.max(0, second.getBitrate()));
+        if (bitrate != 0) return bitrate;
+
+        return Integer.compare(getCodecPriority(first), getCodecPriority(second));
+    }
+
+    private static int bestStreamHeight(@Nullable final String label) {
+        if (label == null) return 0;
+        final java.util.regex.Matcher height = java.util.regex.Pattern
+                .compile("(?i)([1-9][0-9]{2,3})\\s*p")
+                .matcher(label);
+        if (height.find()) {
+            try {
+                return Integer.parseInt(height.group(1));
+            } catch (final NumberFormatException ignored) {
+                return 0;
+            }
+        }
+        final String upper = label.toUpperCase(java.util.Locale.ROOT);
+        if (upper.contains("8K")) return 4320;
+        if (upper.contains("4K")) return 2160;
+        if (upper.contains("2K")) return 1440;
+        return 0;
+    }
+
+    private static int bestStreamFps(@Nullable final String label) {
+        if (label == null) return 0;
+        final java.util.regex.Matcher fps = java.util.regex.Pattern
+                .compile("(?i)[0-9]{3,4}p([0-9]{2,3})")
+                .matcher(label);
+        if (fps.find()) {
+            try {
+                return Integer.parseInt(fps.group(1));
+            } catch (final NumberFormatException ignored) {
+                return 0;
+            }
+        }
+        return 0;
+    }
+
+    /**
      * Core selection logic that groups by *effective* resolution (ignoring suffixes),
      * then selects inside each bucket via bitrate / codec-rank.
      */
@@ -398,10 +471,9 @@ public final class ListHelper {
             return -1;
         }
 
-        // 1. User picked the best resolution key → simply return the highest actual stream
+        // 1. Best available is source-aware across *all* services, not only MissAV.
         if (bestResolutionKey.equals(targetRes)) {
-            return streams.indexOf(
-                    Collections.max(streams, ListHelper::compareVideoStreamResolution));
+            return getHighestAvailableVideoStreamIndex(streams);
         }
 
         // 2. Strip suffixes to group variants together:   1080p HDR → 1080p

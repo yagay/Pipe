@@ -430,6 +430,18 @@ public final class Player implements
         this.service = service;
         context = service.getInstance();
         prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        // Update existing installations to the new global "best available"
+        // default once. Any subsequent resolution preference chosen by the
+        // user is retained, including independent popup player preferences.
+        final String qualityMigrationKey = "pipe_highest_resolution_default_v1";
+        if (!prefs.getBoolean(qualityMigrationKey, false)) {
+            final String highest = context.getString(R.string.best_resolution_key);
+            prefs.edit()
+                    .putString(context.getString(R.string.default_resolution_key), highest)
+                    .putString(context.getString(R.string.default_popup_resolution_key), highest)
+                    .putBoolean(qualityMigrationKey, true)
+                    .apply();
+        }
 
         final boolean isSponsorBlockEnabled = prefs.getBoolean(
                 context.getString(R.string.sponsor_block_enable_key), true);
@@ -483,31 +495,10 @@ public final class Player implements
         return new QualityResolver() {
             @Override
             public int getDefaultResolutionIndex(final List<VideoStream> sortedVideos) {
-                // MissAV advertises its CDN renditions as individual HLS
-                // streams. Start at the highest confirmed resolution; the
-                // existing quality popup still allows a manual switch.
-                int bestIndex = -1;
-                int bestHeight = -1;
-                for (int i = 0; i < sortedVideos.size(); i++) {
-                    final VideoStream stream = sortedVideos.get(i);
-                    final String manifest = stream.getManifestUrl();
-                    if (manifest == null || !manifest.endsWith("#missav=1")) {
-                        continue;
-                    }
-                    final java.util.regex.Matcher height =
-                            java.util.regex.Pattern.compile("^(\\d+)p$")
-                                    .matcher(stream.getResolution());
-                    if (height.matches()) {
-                        final int pixels = Integer.parseInt(height.group(1));
-                        if (pixels > bestHeight) {
-                            bestHeight = pixels;
-                            bestIndex = i;
-                        }
-                    }
-                }
-                if (bestIndex != -1) {
-                    return bestIndex;
-                }
+                // All services now share the same source-aware default.
+                // "Best" selects the highest real resolution (including
+                // bitrate/fps ties); a user-configured resolution or mobile
+                // data cap is still honored by ListHelper.
                 return videoPlayerSelected()
                         ? ListHelper.getDefaultResolutionIndex(context, sortedVideos)
                         : ListHelper.getPopupDefaultResolutionIndex(context, sortedVideos);
@@ -618,7 +609,15 @@ public final class Player implements
     }
 
     private DefaultTrackSelector createTrackSelector() {
-        return new DefaultTrackSelector(context, PlayerHelper.getQualitySelector());
+        final DefaultTrackSelector selector =
+                new DefaultTrackSelector(context, PlayerHelper.getQualitySelector());
+        // Sites exposing one adaptive HLS/DASH master URL do not list every
+        // rendition as a separate VideoStream. For them, ask Media3 to start
+        // with the highest supported rendition, not the bandwidth-based one.
+        // Manual track overrides remain handled by Media3.
+        selector.setParameters(selector.buildUponParameters()
+                .setForceHighestSupportedBitrate(true));
+        return selector;
     }
 
     private void initListeners() {

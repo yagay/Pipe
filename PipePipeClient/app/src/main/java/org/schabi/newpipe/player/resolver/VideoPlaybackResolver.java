@@ -45,6 +45,8 @@ public class VideoPlaybackResolver implements PlaybackResolver {
 
     private int selectedIndex = -1;
     @Nullable
+    private String selectedVideoUrl;
+    @Nullable
     private String audioTrack;
 
     private List<String> blacklistUrls = new ArrayList<>();
@@ -66,6 +68,12 @@ public class VideoPlaybackResolver implements PlaybackResolver {
     @Override
     @Nullable
     public MediaSource resolve(@NonNull final StreamInfo info) {
+        // An explicit per-video quality selection must not carry over to
+        // another video or Supjav CD. The next source starts at its own best.
+        if (!java.util.Objects.equals(selectedVideoUrl, info.getUrl())) {
+            selectedVideoUrl = info.getUrl();
+            selectedIndex = -1;
+        }
         final MediaSource liveSource = PlaybackResolver.maybeBuildLiveMediaSource(dataSource, info);
         if (liveSource != null) {
             streamSourceType = SourceType.LIVE_STREAM;
