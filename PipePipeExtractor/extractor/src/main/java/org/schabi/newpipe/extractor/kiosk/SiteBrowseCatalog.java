@@ -134,6 +134,55 @@ public final class SiteBrowseCatalog {
         return Collections.unmodifiableList(new ArrayList<>(entries.values()));
     }
 
+    /** Read the site's real sort links; keep the selected category path unchanged. */
+    public static List<Entry> getWebsiteSorts(final StreamingService service,
+                                              final String pageUrl)
+            throws IOException, ExtractionException {
+        final String base;
+        final Document document;
+        if (service instanceof KissJavService) {
+            base = KissJavParsingHelper.BASE_URL;
+            document = KissJavParsingHelper.fetchDocument(pageUrl);
+        } else if (service instanceof EightyFivePoService) {
+            base = EightyFivePoParsingHelper.BASE_URL;
+            document = EightyFivePoParsingHelper.fetchDocument(pageUrl);
+        } else {
+            return Collections.emptyList();
+        }
+        final Map<String, Entry> sorts = new LinkedHashMap<>();
+        final URI current;
+        try {
+            current = new URI(pageUrl);
+        } catch (final URISyntaxException e) {
+            return Collections.emptyList();
+        }
+        for (final Element link : document.select("a[href]")) {
+            final String label = link.text().trim();
+            final URI candidate;
+            try {
+                candidate = new URI(link.absUrl("href"));
+            } catch (final URISyntaxException ignored) {
+                continue;
+            }
+            if (label.isEmpty() || label.length() > 35
+                    || candidate.getHost() == null
+                    || !candidate.getHost().equalsIgnoreCase(current.getHost())
+                    || !current.getPath().equals(candidate.getPath())
+                    || candidate.getRawQuery() == null
+                    || !candidate.getRawQuery().matches("(?:^|.*&)sort_by=[^&]+(?:&.*)?")) {
+                continue;
+            }
+            final String url = candidate.toString();
+            sorts.putIfAbsent(url, new Entry("sort:" + url, label, url));
+        }
+        if (!sorts.isEmpty()) {
+            final String clean = pageUrl.replaceAll("([?&])sort_by=[^&#]*", "$1")
+                    .replaceAll("[?&]$", "");
+            sorts.put("default", new Entry("sort:" + clean, "Latest", clean));
+        }
+        return Collections.unmodifiableList(new ArrayList<>(sorts.values()));
+    }
+
     private static int order(final String id) {
         if ("latest".equalsIgnoreCase(id)) {
             return 0;
