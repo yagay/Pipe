@@ -75,3 +75,4 @@ jobs:
             PipePipeExtractor/extractor/build/test-results/**
             PipePipeExtractor/extractor/build/reports/tests/**
           if-no-files-found: ignore
+# Manual Debug build after restoring test to 7091c31 (2026-11-21).
