@@ -296,6 +296,24 @@ final class SupjavProviderExtractor {
                 .setIsVideoOnly(false).build());
     }
 
+    /**
+     * Carry the successful LUC native probe's HTTP header profile through to
+     * Media3, without changing the URL, its signature, or other providers.
+     * The marker is app-local metadata and is stripped before the media GET.
+     */
+    static VideoStream withNativeOriginPolicy(final VideoStream source,
+                                              final boolean includeOrigin) {
+        if (includeOrigin) return source;
+        return new VideoStream.Builder()
+                .setId(source.getId())
+                .setContent(source.getContent() + "&origin=0", true)
+                .setResolution(source.getResolution())
+                .setMediaFormat(source.getMediaFormat())
+                .setDeliveryMethod(source.getDeliveryMethod())
+                .setIsVideoOnly(source.isVideoOnly())
+                .build();
+    }
+
     static String resolveDeclaredUrl(final String raw, final String detailUrl) {
         if (raw == null || raw.isEmpty() || raw.length() > 2048) return null;
         try {
