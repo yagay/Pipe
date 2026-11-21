@@ -36,7 +36,8 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
     private static final String EXTRA_PAGE = "supjav_page";
     private static final String EXTRA_SERVER = "supjav_server";
     private int selectedServer = -1;
-    private int mediaRequestsSeen = 0;
+    private final java.util.concurrent.atomic.AtomicInteger mediaRequestsSeen =
+            new java.util.concurrent.atomic.AtomicInteger();
     private boolean selectedApplied = false;
     private boolean selectionStarted = false;
     private final Handler selectionHandler = new Handler(Looper.getMainLooper());
@@ -121,8 +122,7 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
                         || path.endsWith(".mp4") || path.endsWith(".m4s")
                         || path.endsWith(".ts")
                         || path.matches(".*/hls[0-9]*/(?:master|index|playlist)[^/]*\\.txt");
-                if (media && mediaRequestsSeen < 16) {
-                    mediaRequestsSeen++;
+                if (media && mediaRequestsSeen.getAndIncrement() < 16) {
                     final String referer = request.getRequestHeaders().entrySet().stream()
                             .filter(entry -> "Referer".equalsIgnoreCase(entry.getKey()))
                             .map(java.util.Map.Entry::getValue)
@@ -290,6 +290,31 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
         browser.loadUrl(url);
     }
 
+    @Override
+    protected void onNewIntent(final Intent intent) {
+        super.onNewIntent(intent);
+        // CLEAR_TOP | SINGLE_TOP may reuse this activity for another CD.
+        // Reset the selected iframe instead of retaining the old video.
+        final String nextPage = intent.getStringExtra(EXTRA_PAGE);
+        final int nextServer = intent.getIntExtra(EXTRA_SERVER, -1);
+        final String currentPage = getIntent().getStringExtra(EXTRA_PAGE);
+        final int currentServer = selectedServer;
+        if (nextPage == null || !nextPage.matches(
+                "https://(?:www\\.)?supjav\\.com/[0-9]+\\.html")
+                || nextServer < 0 || nextServer >= 80) return;
+        if (nextPage.equals(currentPage) && nextServer == currentServer) return;
+        setIntent(intent);
+        selectedServer = nextServer;
+        selectedApplied = false;
+        selectionStarted = false;
+        mediaRequestsSeen.set(0);
+        selectionHandler.removeCallbacksAndMessages(null);
+        if (browser != null) {
+            browser.stopLoading();
+            browser.loadUrl(nextPage);
+        }
+    }
+
     private int dp(final int value) {
         return (int) (getResources().getDisplayMetrics().density * value + 0.5f);
     }
@@ -331,7 +356,7 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
     protected void onDestroy() {
         selectionHandler.removeCallbacksAndMessages(null);
         DiagnosticLog.event("SUPJAV_WEB", "SESSION_END",
-                "mediaRequestsObserved=" + mediaRequestsSeen);
+                "mediaRequestsObserved=" + Math.min(mediaRequestsSeen.get(), 16));
         hideFullScreen();
         if (browser != null) {
             browser.stopLoading();
