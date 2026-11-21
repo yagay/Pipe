@@ -332,6 +332,46 @@ public final class Player implements
 
     private boolean isSomePopupMenuVisible = false;
     private PopupMenu qualityPopupMenu;
+    private static final int POPUP_MENU_ID_ADAPTIVE_VIDEO = 72;
+
+    /** Resolved Media3 HLS/DASH renditions, not placeholder source labels. */
+    private static final class AdaptiveVideoQuality {
+        final TrackGroup group;
+        final int trackIndex;
+        final int height;
+        final int bitrate;
+        final String label;
+
+        AdaptiveVideoQuality(final TrackGroup group, final int trackIndex,
+                             final Format format) {
+            this.group = group;
+            this.trackIndex = trackIndex;
+            this.height = format.height;
+            this.bitrate = format.bitrate;
+            final StringBuilder result = new StringBuilder();
+            if (format.height > 0) {
+                result.append(format.height).append("p");
+                if (format.frameRate >= 49.5f) {
+                    result.append(Math.round(format.frameRate));
+                }
+            } else {
+                result.append("Video");
+            }
+            if (format.bitrate > 0) {
+                final double mbps = format.bitrate / 1_000_000d;
+                result.append(" · ")
+                        .append(String.format(java.util.Locale.US, "%.1f", mbps))
+                        .append(" Mbps");
+            }
+            label = result.toString();
+        }
+    }
+
+    private final List<AdaptiveVideoQuality> adaptiveVideoQualities = new ArrayList<>();
+    @Nullable
+    private String manuallySelectedAdaptiveQuality;
+    @Nullable
+    private String adaptiveQualityStreamUrl;
     private PopupMenu playbackSpeedPopupMenu;
     private PopupMenu captionPopupMenu;
     private PopupMenu audioTrackPopupMenu;
@@ -3035,6 +3075,12 @@ public final class Player implements
             enqueueTimer.cancel(true);
         }
         onTextTracksChanged(tracks);
+        // An HLS master playlist exposes one VideoStream ("Auto") to the
+        // extractor. The real 360p/720p/1080p variants appear *later* in
+        // Media3 Tracks. Rebuild the existing player menu at that point.
+        if (isAdaptiveVideoSource() && !isAudioOnly) {
+            buildQualityMenu();
+        }
     }
 
     @Override
@@ -3745,6 +3791,18 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
             setResizeMode(PlayerHelper.retrieveResizeModeFromPrefs(this));
         }
 
+        if (!java.util.Objects.equals(adaptiveQualityStreamUrl, info.getUrl())) {
+            // An override is only valid for the current video's track group.
+            // A new video/CD returns to the globally configured highest
+            // supported bitrate, without affecting the next source.
+            adaptiveQualityStreamUrl = info.getUrl();
+            manuallySelectedAdaptiveQuality = null;
+            adaptiveVideoQualities.clear();
+            trackSelector.setParameters(trackSelector.buildUponParameters()
+                    .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+                    .setForceHighestSupportedBitrate(true));
+        }
+
         initThumbnail(info.getThumbnailUrl());
         registerStreamViewed();
         updateStreamRelatedViews();
@@ -4269,44 +4327,98 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
                 || quality.equalsIgnoreCase("unknown") ? "Quality" : quality;
     }
 
-    private void buildQualityMenu() {
-        if (qualityPopupMenu == null) {
-            return;
+    private boolean isAdaptiveVideoSource() {
+        if (availableStreams == null || availableStreams.size() != 1) return false;
+        final DeliveryMethod method = availableStreams.get(0).getDeliveryMethod();
+        return method == DeliveryMethod.HLS || method == DeliveryMethod.DASH;
+    }
+
+    /** Real, device-supported renditions from the current Media3 HLS/DASH track groups. */
+    private void readAdaptiveVideoQualities() {
+        adaptiveVideoQualities.clear();
+        if (simpleExoPlayer == null || !isAdaptiveVideoSource()) return;
+        final Tracks tracks = simpleExoPlayer.getCurrentTracks();
+        for (final Tracks.Group group : tracks.getGroups()) {
+            if (group.getType() != C.TRACK_TYPE_VIDEO) continue;
+            for (int index = 0; index < group.length; index++) {
+                if (!group.isTrackSupported(index)) continue;
+                final Format format = group.getTrackFormat(index);
+                if (format.height <= 0 && format.bitrate <= 0) continue;
+                adaptiveVideoQualities.add(new AdaptiveVideoQuality(
+                        group.getMediaTrackGroup(), index, format));
+            }
         }
+        adaptiveVideoQualities.sort((a, b) -> {
+            final int byHeight = Integer.compare(b.height, a.height);
+            return byHeight != 0 ? byHeight : Integer.compare(b.bitrate, a.bitrate);
+        });
+    }
+
+    private String adaptiveQualityButtonLabel() {
+        if (manuallySelectedAdaptiveQuality != null) {
+            return manuallySelectedAdaptiveQuality;
+        }
+        if (simpleExoPlayer != null) {
+            final Format active = simpleExoPlayer.getVideoFormat();
+            if (active != null && active.height > 0) {
+                return "Auto · " + active.height + "p";
+            }
+        }
+        return "Auto · Best";
+    }
+
+    private void buildQualityMenu() {
+        if (qualityPopupMenu == null || binding == null) return;
         qualityPopupMenu.getMenu().clear();
 
-        final boolean supjavSources = !availableStreams.isEmpty()
-                && availableStreams.stream().allMatch(stream ->
-                        stream.getId() != null
-                        && stream.getId().startsWith("SUPJAV|"));
-        if (supjavSources) {
-            // Source selection has its own visible player controls.
-            // The quality popup stays dedicated to resolutions.
-            for (int i = 0; i < availableStreams.size(); i++) {
-                final VideoStream stream = availableStreams.get(i);
-                qualityPopupMenu.getMenu().add(POPUP_MENU_ID_QUALITY, i, Menu.NONE,
-                        stream.getResolution());
+        if (isAdaptiveVideoSource()) {
+            readAdaptiveVideoQualities();
+            qualityPopupMenu.getMenu().add(POPUP_MENU_ID_ADAPTIVE_VIDEO, -1,
+                    Menu.NONE, "Auto · Best");
+            for (int i = 0; i < adaptiveVideoQualities.size(); i++) {
+                qualityPopupMenu.getMenu().add(POPUP_MENU_ID_ADAPTIVE_VIDEO, i,
+                        Menu.NONE, adaptiveVideoQualities.get(i).label);
             }
-            final VideoStream selected = getSelectedVideoStream() == null
-                    ? availableStreams.get(0) : getSelectedVideoStream();
+            binding.qualityTextView.setText(adaptiveQualityButtonLabel());
+        } else {
+            adaptiveVideoQualities.clear();
+            final boolean supjavSources = availableStreams != null
+                    && !availableStreams.isEmpty()
+                    && availableStreams.stream().allMatch(stream ->
+                            stream.getId() != null
+                            && stream.getId().startsWith("SUPJAV|"));
+            if (availableStreams != null) {
+                for (int i = 0; i < availableStreams.size(); i++) {
+                    final VideoStream videoStream = availableStreams.get(i);
+                    final String label = supjavSources
+                            ? videoStream.getResolution()
+                            : videoStream.getCodec().toUpperCase().split("\\.")[0]
+                                    + " " + videoStream.resolution;
+                    qualityPopupMenu.getMenu().add(POPUP_MENU_ID_QUALITY, i,
+                            Menu.NONE, label);
+                }
+            }
+            if (getSelectedVideoStream() != null) {
+                binding.qualityTextView.setText(playerStreamLabel(
+                        getSelectedVideoStream()));
+            }
+        }
+
+        // CD and Server remain separate controls in the player itself.
+        final VideoStream selected = getSelectedVideoStream();
+        final boolean supjav = selected != null && selected.getId() != null
+                && selected.getId().startsWith("SUPJAV|");
+        binding.supjavCdTextView.setVisibility(supjav ? View.VISIBLE : View.GONE);
+        binding.supjavServerTextView.setVisibility(supjav ? View.VISIBLE : View.GONE);
+        if (supjav) {
             final String[] fields = selected.getId().split("\\|", 4);
             binding.supjavCdTextView.setText(fields.length > 1 ? fields[1] : "CD");
-            binding.supjavServerTextView.setText(fields.length > 2 ? fields[2] : "Server");
+            binding.supjavServerTextView.setText(
+                    fields.length > 2 ? fields[2] : "Server");
             binding.supjavCdTextView.setContentDescription("Choose CD");
             binding.supjavServerTextView.setContentDescription("Choose Supjav server");
-            binding.supjavCdTextView.setVisibility(View.VISIBLE);
-            binding.supjavServerTextView.setVisibility(View.VISIBLE);
-        } else {
-            for (int i = 0; i < availableStreams.size(); i++) {
-                final VideoStream videoStream = availableStreams.get(i);
-                qualityPopupMenu.getMenu().add(POPUP_MENU_ID_QUALITY, i, Menu.NONE,
-                        videoStream.getCodec().toUpperCase().split("\\.")[0]
-                                + " " + videoStream.resolution);
-            }
         }
-        if (getSelectedVideoStream() != null) {
-            binding.qualityTextView.setText(playerStreamLabel(getSelectedVideoStream()));
-        }
+
         qualityPopupMenu.setOnMenuItemClickListener(this);
         qualityPopupMenu.setOnDismissListener(this);
     }
@@ -4415,6 +4527,33 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
                     + "menuItem.getItemId = [" + menuItem.getItemId() + "]");
         }
 
+        if (menuItem.getGroupId() == POPUP_MENU_ID_ADAPTIVE_VIDEO) {
+            final int quality = menuItem.getItemId();
+            if (!isAdaptiveVideoSource()) return true;
+            final DefaultTrackSelector.Parameters.Builder params =
+                    trackSelector.buildUponParameters()
+                            .clearOverridesOfType(C.TRACK_TYPE_VIDEO);
+            if (quality == -1) {
+                // Auto is highest-by-default, not forced low bandwidth mode.
+                manuallySelectedAdaptiveQuality = null;
+                params.setForceHighestSupportedBitrate(true);
+            } else {
+                if (quality < 0 || quality >= adaptiveVideoQualities.size()) return true;
+                final AdaptiveVideoQuality selected = adaptiveVideoQualities.get(quality);
+                manuallySelectedAdaptiveQuality = selected.label;
+                params.setForceHighestSupportedBitrate(false);
+                params.setOverrideForType(
+                        new TrackSelectionOverride(selected.group, selected.trackIndex));
+            }
+            // Media3 switches the selected HLS/DASH rendition in-place,
+            // preserving playback position, volume, subtitles, and audio.
+            trackSelector.setParameters(params);
+            binding.qualityTextView.setText(adaptiveQualityButtonLabel());
+            DiagnosticLog.event("PLAYER_QUALITY", "ADAPTIVE_SELECTED",
+                    quality == -1 ? "auto-best" : "height="
+                            + adaptiveVideoQualities.get(quality).height);
+            return true;
+        }
         if (menuItem.getGroupId() == POPUP_MENU_ID_QUALITY) {
             final int menuItemIndex = menuItem.getItemId();
             if (selectedStreamIndex == menuItemIndex || availableStreams == null
@@ -4453,7 +4592,9 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
             Log.d(TAG, "onDismiss() called with: menu = [" + menu + "]");
         }
         isSomePopupMenuVisible = false; //TODO check if this works
-        if (getSelectedVideoStream() != null) {
+        if (isAdaptiveVideoSource()) {
+            binding.qualityTextView.setText(adaptiveQualityButtonLabel());
+        } else if (getSelectedVideoStream() != null) {
             binding.qualityTextView.setText(playerStreamLabel(getSelectedVideoStream()));
         }
         if (isPlaying()) {
