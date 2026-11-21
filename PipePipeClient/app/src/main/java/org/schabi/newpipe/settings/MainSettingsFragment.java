@@ -36,14 +36,44 @@ public class MainSettingsFragment extends BasePreferenceFragment {
         final Preference export = findPreference("pipe_export_diagnostics_main");
         if (export != null) {
             export.setOnPreferenceClickListener(preference -> {
-                try {
-                    DiagnosticLog.share(requireContext());
-                } catch (final Exception error) {
-                    DiagnosticLog.error("DIAGNOSTICS", "EXPORT_FAILED", error,
-                            "main settings export");
+                if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q
+                        && androidx.core.content.ContextCompat.checkSelfPermission(
+                        requireContext(), android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                        != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    requestPermissions(new String[]{
+                            android.Manifest.permission.WRITE_EXTERNAL_STORAGE}, 8401);
                     Toast.makeText(requireContext(),
-                            "Could not export diagnostics", Toast.LENGTH_LONG).show();
+                            "Allow storage access, then tap Export again", Toast.LENGTH_LONG).show();
+                    return true;
                 }
+                final android.content.Context appContext =
+                        requireContext().getApplicationContext();
+                new Thread(() -> {
+                    try {
+                        final String fileName = DiagnosticLog.saveToDownloads(appContext);
+                        if (isAdded()) {
+                            requireActivity().runOnUiThread(() -> {
+                                if (isAdded()) {
+                                    Toast.makeText(requireContext(),
+                                            "Saved to Downloads/" + fileName,
+                                            Toast.LENGTH_LONG).show();
+                                }
+                            });
+                        }
+                    } catch (final Exception error) {
+                        DiagnosticLog.error("DIAGNOSTICS", "EXPORT_FAILED", error,
+                                "direct Downloads save");
+                        if (isAdded()) {
+                            requireActivity().runOnUiThread(() -> {
+                                if (isAdded()) {
+                                    Toast.makeText(requireContext(),
+                                            "Failed to save diagnostics to Downloads",
+                                            Toast.LENGTH_LONG).show();
+                                }
+                            });
+                        }
+                    }
+                }, "PipeDiagnosticExport").start();
                 return true;
             });
         }
