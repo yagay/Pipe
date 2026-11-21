@@ -100,25 +100,59 @@ public final class SupjavBrowserHlsDocument {
                   if(window.Hls&&Hls.isSupported()){
                     hls=new Hls({enableWorker:false,maxBufferLength:20});
                     var networkRetries=0,mediaRetries=0;
+                    var firstFragmentLoaded=false,firstFragmentBuffered=false;
+                    var firstFragRequestLogged=false,nonFatalErrors=0;
+                    function safe(value){return String(value||'unknown')
+                      .replace(/[^a-zA-Z0-9_-]/g,'').slice(0,48);}
                     hls.on(Hls.Events.MEDIA_ATTACHED,function(){hls.loadSource(url);});
+                    hls.on(Hls.Events.LEVEL_LOADED,function(){
+                      report('NETWORK_DIAG:LEVEL_LOADED');
+                    });
+                    hls.on(Hls.Events.FRAG_LOADING,function(){
+                      if(!firstFragRequestLogged){
+                        firstFragRequestLogged=true;
+                        report('NETWORK_DIAG:FIRST_FRAGMENT_REQUESTED');
+                      }
+                    });
+                    hls.on(Hls.Events.FRAG_LOADED,function(){
+                      if(!firstFragmentLoaded){
+                        firstFragmentLoaded=true;
+                        report('NETWORK_DIAG:FIRST_FRAGMENT_LOADED');
+                      }
+                    });
+                    hls.on(Hls.Events.FRAG_BUFFERED,function(){
+                      if(!firstFragmentBuffered){
+                        firstFragmentBuffered=true;
+                        report('NETWORK_DIAG:FIRST_FRAGMENT_BUFFERED');
+                      }
+                    });
                     hls.on(Hls.Events.MANIFEST_PARSED,function(){
                       ready=true;report('MANIFEST_PARSED');
-                      var highest=-1,score=-1;
-                      hls.levels.forEach(function(level,index){
-                        var value=(level.height||0)*1000000+(level.bitrate||0);
-                        if(value>score){score=value;highest=index;}
-                      });
+                      // The known-working Supjav renderer starts with HLS.js ABR.
+                      // Forcing currentLevel to the maximum before the first
+                      // fragment can stall signed or slow CDNs indefinitely.
+                      // Keep the full manual quality list available in Pipe UI.
                       report('LEVELS:'+hls.levels.map(function(level){
                         return level.height||0;}).join(','));
-                      if(highest>=0){
-                        qualityIndex=highest;hls.currentLevel=highest;
-                        report('QUALITY:'+(hls.levels[highest].height||'?')+'p');
-                      }else{report('QUALITY:Auto');}
+                      qualityIndex=-1;
+                      hls.currentLevel=-1;
+                      report('QUALITY:Auto');
                       video.play().catch(function(){report('AUTOPLAY_RESTRICTED');});
                     });
                     hls.on(Hls.Events.ERROR,function(event,error){
-                      if(!error||!error.fatal)return;
+                      if(!error)return;
                       var status=error.response&&error.response.code||0;
+                      // Nonfatal fragment/level errors can loop while the video
+                      // remains black. Report bounded diagnostics without URLs.
+                      if(!error.fatal){
+                        if(nonFatalErrors++<6){
+                          report('NETWORK_DIAG:NONFATAL_'+safe(error.details)
+                            +'_'+Number(status||0));
+                        }
+                        return;
+                      }
+                      report('NETWORK_DIAG:FATAL_'+safe(error.details)
+                        +'_'+Number(status||0));
                       if(error.type===Hls.ErrorTypes.NETWORK_ERROR&&
                          status!==401&&status!==403&&status!==404&&networkRetries++<2){
                         report('NETWORK_RETRY');hls.startLoad();return;
@@ -139,8 +173,21 @@ public final class SupjavBrowserHlsDocument {
                   }else{fail('hlsjs-unavailable');}
                   setTimeout(function(){if(!ready)fail('manifest-timeout');},14000);
                   setTimeout(function(){
-                    if(!firstFrame && video.readyState<2) fail('no-video-frames');
-                  },18000);
+                    if(!firstFrame && hls && !firstFragmentLoaded){
+                      report('NETWORK_DIAG:STARTUP_NO_FRAGMENT');
+                      // Retry the same signed URL once through HLS.js; never
+                      // invent alternate media URLs or infinite retry loops.
+                      hls.startLoad();
+                    }
+                  },12000);
+                  setTimeout(function(){
+                    if(!firstFrame && video.readyState<2){
+                      report('NETWORK_DIAG:VIDEO_STATE_'+video.readyState
+                        +'_FRAG_'+Number(firstFragmentLoaded)
+                        +'_BUFFERED_'+Number(firstFragmentBuffered));
+                      fail('no-decoded-video-after-30s');
+                    }
+                  },30000);
                 })();
                 </script></body></html>
                 """.replace("__MEDIA_BASE64__", encoded);
