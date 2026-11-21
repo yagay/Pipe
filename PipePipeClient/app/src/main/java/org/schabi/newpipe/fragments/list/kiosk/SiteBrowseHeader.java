@@ -52,8 +52,7 @@ final class SiteBrowseHeader {
         padding = (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP,
                 12, view.getResources().getDisplayMetrics());
         render(entries);
-        if (service instanceof org.schabi.newpipe.extractor.services.kissjav.KissJavService
-                || service instanceof org.schabi.newpipe.extractor.services.eightyfivepo.EightyFivePoService) {
+        if (SiteBrowseCatalog.supportsHtmlCategories(service)) {
             loadCategories(service);
             if (selectedKioskId.startsWith("category:")) {
                 loadSorts(service, currentUrl);
