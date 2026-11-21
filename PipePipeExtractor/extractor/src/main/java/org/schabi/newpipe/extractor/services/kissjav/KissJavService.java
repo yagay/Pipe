@@ -1,6 +1,12 @@
 package org.schabi.newpipe.extractor.services.kissjav;
 
 import org.schabi.newpipe.extractor.StreamingService;
+import org.schabi.newpipe.extractor.Page;
+import org.schabi.newpipe.extractor.localization.Localization;
+import org.schabi.newpipe.extractor.kiosk.KioskExtractor;
+import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import org.schabi.newpipe.extractor.bulletComments.BulletCommentsExtractor;
 import org.schabi.newpipe.extractor.channel.ChannelExtractor;
 import org.schabi.newpipe.extractor.channel.ChannelTabExtractor;
@@ -78,7 +84,19 @@ public final class KissJavService extends StreamingService {
 
     @Override
     public KioskList getKioskList() throws ExtractionException {
-        final KioskList list = new KioskList(this);
+        final KioskList list = new KioskList(this) {
+            @Override
+            public KioskExtractor getExtractorByUrl(final String url,
+                    final Page nextPage, final Localization localization)
+                    throws ExtractionException, IOException {
+                if (isNativeCategoryUrl(url)) {
+                    final ListLinkHandler handler = new ListLinkHandler(url, url, "category",
+                            Collections.emptyList(), null);
+                    return new KissJavKioskExtractor(KissJavService.this, handler, "category");
+                }
+                return super.getExtractorByUrl(url, nextPage, localization);
+            }
+        };
         try {
             list.addKioskEntry((service, url, kioskId) -> new KissJavKioskExtractor(
                             service,
@@ -103,6 +121,19 @@ public final class KissJavService extends StreamingService {
             throw new ExtractionException("Could not initialize KissJAV kiosks", e);
         }
         return list;
+    }
+
+    private static boolean isNativeCategoryUrl(final String url) {
+        try {
+            final URI uri = new URI(url);
+            final URI site = new URI(KissJavParsingHelper.BASE_URL);
+            return "https".equalsIgnoreCase(uri.getScheme())
+                    && site.getHost().equalsIgnoreCase(uri.getHost())
+                    && uri.getPath() != null
+                    && uri.getPath().matches("/categories/[^/]+/?");
+        } catch (final URISyntaxException ignored) {
+            return false;
+        }
     }
 
     @Override
