@@ -103,6 +103,18 @@ final class SupjavServerResolver {
                     if (candidates.size() >= MAX_CANDIDATES) break;
                 }
 
+                // VOE can navigate from its entry page to the real player
+                // using a declared window.location assignment, not an iframe.
+                for (final String destination :
+                        SupjavProviderExtractor.declaredPlayerRedirects(page, selected)) {
+                    if (pending.size() >= 8) break;
+                    if ((validFrame(destination)
+                            || SupjavProviderExtractor.isMedia(destination))
+                            && !visited.contains(destination)) {
+                        pending.addLast(new Route(destination, finalUrl));
+                    }
+                }
+
                 // Only follow recognized player embeds linked from this selected
                 // provider, never unrelated ad/sidebar frames.
                 for (final Element frame : page.select(
