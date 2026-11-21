@@ -3958,14 +3958,28 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
      * CD/server. The queue item now resolves the newly selected source,
      * without replacing the queue with a one-item playlist.
      */
-    public void reloadCurrentSupjavQueueSource() {
+    public void reloadCurrentSupjavQueueSource(final boolean changingDisc) {
         if (playQueue == null || playQueue.getItem() == null
                 || playQueue.getItem().getServiceId()
                         != org.schabi.newpipe.extractor.ServiceList.Supjav.getServiceId()
                 || exoPlayerIsNull()) {
             return;
         }
-        setRecovery();
+        final int index = playQueue.getIndex();
+        if (changingDisc) {
+            // CD2 is a different part of the video. Do not seek to the
+            // position from CD1, which may be outside CD2's HLS timeline.
+            playQueue.unsetRecovery(index);
+            simpleExoPlayer.seekToDefaultPosition(index);
+        } else {
+            // Changing only the provider inside a CD should retain progress.
+            setRecovery();
+        }
+        DiagnosticLog.event("SUPJAV_PLAYER", "SINGLE_SOURCE_RELOAD",
+                "index=" + index + " discChanged=" + changingDisc
+                        + " queueSize=" + playQueue.size());
+        // One reload only. The fragment must not concurrently launch another
+        // selected-url extractor worker or stop/start this player's service.
         reloadPlayQueueManager();
     }
 

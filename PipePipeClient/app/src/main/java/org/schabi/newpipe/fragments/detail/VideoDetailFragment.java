@@ -1612,6 +1612,7 @@ public final class VideoDetailFragment
                 "part=" + selected.part + " server=" + selected.provider
                         + " index=" + selected.index);
         final String target = SupjavServerCatalog.selectedUrl(detailUrl, selected.index);
+        final String previousPart = supjavSelectedPart;
         supjavSelectedPart = selected.part;
         supjavSelectedPartPage = SupjavServerCatalog.pageUrl(detailUrl);
         if (target.equals(url) && currentInfo != null
@@ -1619,19 +1620,40 @@ public final class VideoDetailFragment
             openVideoPlayerAutoFullscreen();
             return;
         }
+        final String previousUrl = activeSupjavUrl();
         final PlayQueue retainedQueue = playQueue != null && playQueue.getItem() != null
                 && playQueue.getItem().getServiceId() == ServiceList.Supjav.getServiceId()
                 && SupjavServerCatalog.pageUrl(playQueue.getItem().getUrl())
                         .equals(SupjavServerCatalog.pageUrl(target))
                 ? playQueue : null;
         if (retainedQueue != null) {
-            // Keep the original browse/search queue and its pagination.
-            // Switch the playback source of this one entry only.
+            // Keep the *same* browsed page queue and its pagination cursor.
+            // Only the current item's media source changes.
             retainedQueue.getItem().setSupjavSelectedSource(target);
-            if (player != null && player.getPlayQueue() == retainedQueue) {
-                player.reloadCurrentSupjavQueueSource();
-            }
         }
+        if (retainedQueue != null && player != null
+                && player.getPlayQueue() == retainedQueue && isPlayerAvailable()) {
+            // Do not call selectAndLoadVideo() here: it would start a second
+            // StreamInfo request and a second playback initialization while
+            // the queue manager is already reloading this selected source.
+            final boolean changingDisc = previousUrl != null
+                && !selected.part.equals(previousPart);
+            DiagnosticLog.event("SUPJAV", "SWITCH_QUEUE_IN_PLACE",
+                    "part=" + selected.part + " server=" + selected.provider
+                            + " index=" + selected.index
+                            + " resetPosition=" + changingDisc
+                            + " queueSize=" + retainedQueue.size());
+            supjavPlayAfterSelection = false;
+            setInitialData(ServiceList.Supjav.getServiceId(), target,
+                    currentInfo == null ? title : currentInfo.getName(), retainedQueue);
+            player.reloadCurrentSupjavQueueSource(changingDisc);
+            return;
+        }
+        // No active player: do the ordinary one-time detail resolution.
+        // It will start the retained queue only once after the source is ready.
+        DiagnosticLog.event("SUPJAV", "SWITCH_OPEN_SOURCE",
+                "part=" + selected.part + " server=" + selected.provider
+                        + " index=" + selected.index);
         supjavPlayAfterSelection = true;
         setAutoPlay(true);
         selectAndLoadVideo(ServiceList.Supjav.getServiceId(), target,
