@@ -325,6 +325,7 @@ public final class Player implements
 
     private static final int POPUP_MENU_ID_QUALITY = 69;
     private static final int POPUP_MENU_ID_SUPJAV_SERVER = 70;
+    private static final int POPUP_MENU_ID_SUPJAV_CD = 71;
     private static final int POPUP_MENU_ID_PLAYBACK_SPEED = 79;
     private static final int POPUP_MENU_ID_CAPTION = 89;
     private static final int POPUP_MENU_ID_AUDIO_TRACK = 99;
@@ -4273,24 +4274,25 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
                         stream.getId() != null
                         && stream.getId().startsWith("SUPJAV|"));
         if (supjavSources) {
-            final java.util.Map<String, android.view.SubMenu> parts =
-                    new java.util.LinkedHashMap<>();
+            // Only the currently selected CD/source is in availableStreams.
+            // Disc/server switching belongs to two distinct actions, not a
+            // combined dialog or submenus mixed with video resolution.
             for (int i = 0; i < availableStreams.size(); i++) {
                 final VideoStream stream = availableStreams.get(i);
-                final String[] fields = stream.getId().split("\\|", 4);
-                final String part = fields.length > 1 ? fields[1] : "Main";
-                final String server = fields.length > 2 ? fields[2] : "Player";
-                android.view.SubMenu submenu = parts.get(part);
-                if (submenu == null) {
-                    submenu = qualityPopupMenu.getMenu().addSubMenu(
-                            Menu.NONE, -2000 - parts.size(), Menu.NONE, part);
-                    parts.put(part, submenu);
-                }
-                submenu.add(POPUP_MENU_ID_QUALITY, i, Menu.NONE,
-                        server + " · " + stream.getResolution());
+                qualityPopupMenu.getMenu().add(POPUP_MENU_ID_QUALITY, i, Menu.NONE,
+                        stream.getResolution());
             }
+            final VideoStream current = getSelectedVideoStream();
+            final String[] selectedFields = current == null || current.getId() == null
+                    ? new String[0] : current.getId().split("\\|", 4);
+            final String selectedPart = selectedFields.length > 1
+                    ? selectedFields[1] : "CD";
+            final String selectedServer = selectedFields.length > 2
+                    ? selectedFields[2] : "Server";
+            qualityPopupMenu.getMenu().add(POPUP_MENU_ID_SUPJAV_CD, -2401,
+                    Menu.NONE, "CD · " + selectedPart);
             qualityPopupMenu.getMenu().add(POPUP_MENU_ID_SUPJAV_SERVER, -2400,
-                    Menu.NONE, "Switch CD / Server");
+                    Menu.NONE, "Server · " + selectedServer);
         } else {
             for (int i = 0; i < availableStreams.size(); i++) {
                 final VideoStream videoStream = availableStreams.get(i);
@@ -4410,6 +4412,12 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
                     + "menuItem.getItemId = [" + menuItem.getItemId() + "]");
         }
 
+        if (menuItem.getGroupId() == POPUP_MENU_ID_SUPJAV_CD) {
+            final Intent picker = new Intent(VideoDetailFragment.ACTION_SUPJAV_CD_PICKER);
+            picker.setPackage(context.getPackageName());
+            context.sendBroadcast(picker);
+            return true;
+        }
         if (menuItem.getGroupId() == POPUP_MENU_ID_SUPJAV_SERVER) {
             final Intent picker = new Intent(
                     VideoDetailFragment.ACTION_SUPJAV_SERVER_PICKER);

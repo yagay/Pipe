@@ -139,6 +139,8 @@ public final class VideoDetailFragment
             App.PACKAGE_NAME + ".VideoDetailFragment.ACTION_SHOW_MAIN_PLAYER";
     public static final String ACTION_SUPJAV_SERVER_PICKER =
             App.PACKAGE_NAME + ".VideoDetailFragment.ACTION_SUPJAV_SERVER_PICKER";
+    public static final String ACTION_SUPJAV_CD_PICKER =
+            App.PACKAGE_NAME + ".VideoDetailFragment.ACTION_SUPJAV_CD_PICKER";
     public static final String ACTION_HIDE_MAIN_PLAYER =
             App.PACKAGE_NAME + ".VideoDetailFragment.ACTION_HIDE_MAIN_PLAYER";
     public static final String ACTION_PLAYER_STARTED =
@@ -213,6 +215,10 @@ public final class VideoDetailFragment
     int bottomSheetState = BottomSheetBehavior.STATE_EXPANDED;
     protected boolean autoPlayEnabled = true;
     private boolean supjavPlayAfterSelection = false;
+    @Nullable
+    private String supjavSelectedPart;
+    @Nullable
+    private String supjavSelectedPartPage;
     SponsorBlockMode currentSponsorBlockMode = null;
 
     @Nullable
@@ -1547,34 +1553,97 @@ public final class VideoDetailFragment
                     || currentInfo.getVideoStreams().isEmpty());
     }
 
+    private String activeSupjavUrl() {
+        return url != null && serviceId == ServiceList.Supjav.getServiceId()
+                ? url : currentInfo != null ? currentInfo.getUrl() : url;
+    }
+
+    private String activeSupjavPart(final List<SupjavServerCatalog.Entry> entries,
+                                    final String detailUrl) {
+        final String page = SupjavServerCatalog.pageUrl(detailUrl);
+        if (page.equals(supjavSelectedPartPage) && supjavSelectedPart != null
+                && !SupjavServerCatalog.serversForPart(entries, supjavSelectedPart).isEmpty()) {
+            return supjavSelectedPart;
+        }
+        final SupjavServerCatalog.Entry selected = SupjavServerCatalog.entryForIndex(
+                entries, SupjavServerCatalog.selectedIndex(detailUrl));
+        return selected != null ? selected.part
+                : entries.isEmpty() ? "Main" : entries.get(0).part;
+    }
+
+    private android.widget.TextView ensureSupjavSourceButton(
+            final LinearLayout toolbar, final String tag, final String caption,
+            final int position) {
+        final View existing = toolbar.findViewWithTag(tag);
+        if (existing instanceof android.widget.TextView) {
+            return (android.widget.TextView) existing;
+        }
+        final android.widget.TextView button = new android.widget.TextView(requireContext());
+        button.setTag(tag);
+        button.setText(caption);
+        button.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        button.setGravity(android.view.Gravity.CENTER);
+        button.setClickable(true);
+        button.setFocusable(true);
+        button.setSingleLine(true);
+        button.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        final TypedValue backgroundAttr = new TypedValue();
+        requireContext().getTheme().resolveAttribute(
+                android.R.attr.selectableItemBackgroundBorderless, backgroundAttr, true);
+        button.setBackgroundResource(backgroundAttr.resourceId);
+        toolbar.addView(button, Math.min(position, toolbar.getChildCount()),
+                new LinearLayout.LayoutParams(0,
+                        getResources().getDimensionPixelSize(R.dimen.detail_control_height), 1));
+        return button;
+    }
+
+    /**
+     * Two independent controls above the player: choose CD first, then a
+     * server that actually belongs to the chosen CD. The quality menu retains
+     * only playback quality and the same two entry points.
+     */
     private void configureSupjavSourceButton(final StreamInfo info) {
         if (binding == null) return;
         final LinearLayout toolbar = binding.detailSecondaryControlPanel;
-        final String marker = "supjav_source_picker";
-        View selector = toolbar.findViewWithTag(marker);
+        final View legacy = toolbar.findViewWithTag("supjav_source_picker");
+        if (legacy != null) toolbar.removeView(legacy);
         final boolean supjav = info.getServiceId() == ServiceList.Supjav.getServiceId();
         if (!supjav) {
-            if (selector != null) toolbar.removeView(selector);
+            for (final String tag : new String[]{"supjav_cd_picker", "supjav_server_picker"}) {
+                final View button = toolbar.findViewWithTag(tag);
+                if (button != null) toolbar.removeView(button);
+            }
             return;
         }
-        if (selector == null) {
-            final android.widget.TextView button = new android.widget.TextView(requireContext());
-            button.setTag(marker);
-            button.setText("CD / Server");
-            button.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-            button.setGravity(android.view.Gravity.CENTER);
-            button.setClickable(true);
-            button.setFocusable(true);
-            final TypedValue backgroundAttr = new TypedValue();
-            requireContext().getTheme().resolveAttribute(
-                    android.R.attr.selectableItemBackgroundBorderless,
-                    backgroundAttr, true);
-            button.setBackgroundResource(backgroundAttr.resourceId);
-            toolbar.addView(button, 0, new LinearLayout.LayoutParams(0,
-                    getResources().getDimensionPixelSize(R.dimen.detail_control_height), 1));
-            selector = button;
-        }
-        selector.setOnClickListener(v -> showSupjavServerPicker());
+
+        final android.widget.TextView cd = ensureSupjavSourceButton(
+                toolbar, "supjav_cd_picker", "CD ▾", 0);
+        final android.widget.TextView server = ensureSupjavSourceButton(
+                toolbar, "supjav_server_picker", "Server ▾", 1);
+        cd.setContentDescription("Choose CD");
+        server.setContentDescription("Choose server for the selected CD");
+        cd.setOnClickListener(v -> showSupjavCdPicker());
+        server.setOnClickListener(v -> showSupjavServerPicker());
+
+        final String detailUrl = info.getUrl();
+        disposables.add(Single.fromCallable(() -> SupjavServerCatalog.forPage(detailUrl))
+                .subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(entries -> {
+                    if (!isAdded() || binding == null || currentInfo != info) return;
+                    final String part = activeSupjavPart(entries, activeSupjavUrl());
+                    final List<String> discs = SupjavServerCatalog.parts(entries);
+                    cd.setVisibility(discs.size() > 1 ? View.VISIBLE : View.GONE);
+                    cd.setText(part + " ▾");
+                    final SupjavServerCatalog.Entry chosen =
+                            SupjavServerCatalog.entryForIndex(entries,
+                                    SupjavServerCatalog.selectedIndex(activeSupjavUrl()));
+                    final SupjavServerCatalog.Entry shown = chosen != null
+                            && part.equals(chosen.part)
+                            ? chosen : SupjavServerCatalog.preferredForPart(entries, part, null);
+                    server.setText((shown == null ? "Server" : shown.provider) + " ▾");
+                }, error -> DiagnosticLog.error("SUPJAV", "SOURCE_BUTTON_CATALOG_FAILED",
+                        error, "CD and server labels")));
     }
 
     /** Default to the first-CD VAS line, but let the user override it at any time. */
@@ -1616,6 +1685,8 @@ public final class VideoDetailFragment
                 "part=" + selected.part + " server=" + selected.provider
                         + " index=" + selected.index);
         final String target = SupjavServerCatalog.selectedUrl(detailUrl, selected.index);
+        supjavSelectedPart = selected.part;
+        supjavSelectedPartPage = SupjavServerCatalog.pageUrl(detailUrl);
         if (target.equals(url) && currentInfo != null
                 && !currentInfo.getVideoStreams().isEmpty()) {
             openVideoPlayerAutoFullscreen();
@@ -1627,39 +1698,92 @@ public final class VideoDetailFragment
                 currentInfo == null ? title : currentInfo.getName(), null);
     }
 
-    private void showSupjavServerPicker() {
-        final String detailUrl = currentInfo != null ? currentInfo.getUrl() : url;
+    private void showSupjavCdPicker() {
+        final String detailUrl = activeSupjavUrl();
         if (detailUrl == null || !isAdded()) return;
         disposables.add(Single.fromCallable(() -> SupjavServerCatalog.forPage(detailUrl))
                 .subscribeOn(Schedulers.io())
                 .observeOn(AndroidSchedulers.mainThread())
                 .subscribe(entries -> {
-                    if (!isAdded()) return;
-                    if (entries.isEmpty()) {
-                        new AlertDialog.Builder(requireContext())
-                                .setTitle("Supjav")
-                                .setMessage("No server entries on this video page.")
-                                .setPositiveButton(android.R.string.ok, null).show();
+                    if (!isAdded() || !SupjavServerCatalog.pageUrl(detailUrl)
+                            .equals(SupjavServerCatalog.pageUrl(activeSupjavUrl()))) return;
+                    final List<String> parts = SupjavServerCatalog.parts(entries);
+                    if (parts.isEmpty()) {
+                        Toast.makeText(requireContext(),
+                                "No CD options on this video", Toast.LENGTH_SHORT).show();
                         return;
                     }
-                    final String[] labels = new String[entries.size()];
-                    for (int i = 0; i < entries.size(); i++) {
-                        labels[i] = entries.get(i).label();
-                    }
-                    final int currentServer = SupjavServerCatalog.selectedIndex(detailUrl);
-                    final int displayedIndex = currentServer >= 0 ? currentServer
-                            : SupjavServerCatalog.preferredIndex(entries, null);
+                    final String activePart = activeSupjavPart(entries, activeSupjavUrl());
+                    final int selectedPosition = Math.max(0, parts.indexOf(activePart));
                     new AlertDialog.Builder(requireContext())
-                            .setTitle("Choose CD / Server")
-                            .setSingleChoiceItems(labels, displayedIndex,
+                            .setTitle("Choose CD")
+                            .setSingleChoiceItems(parts.toArray(new String[0]), selectedPosition,
                                     (dialog, position) -> {
                                         dialog.dismiss();
-                                        navigateToSupjavServer(detailUrl, entries.get(position));
+                                        final String requested = parts.get(position);
+                                        if (requested.equals(activePart)) return;
+                                        final SupjavServerCatalog.Entry previous =
+                                                SupjavServerCatalog.entryForIndex(entries,
+                                                        SupjavServerCatalog.selectedIndex(
+                                                                activeSupjavUrl()));
+                                        final String provider = previous == null
+                                                ? null : previous.provider;
+                                        final SupjavServerCatalog.Entry target =
+                                                SupjavServerCatalog.preferredForPart(
+                                                        entries, requested, provider);
+                                        if (target != null) {
+                                            navigateToSupjavServer(detailUrl, target);
+                                        }
                                     })
                             .setNegativeButton(android.R.string.cancel, null)
                             .show();
                 }, error -> {
-                    DiagnosticLog.error("SUPJAV", "CATALOG_FAILED", error, "source picker");
+                    DiagnosticLog.error("SUPJAV", "CD_CATALOG_FAILED", error, "CD picker");
+                    if (isAdded()) {
+                        Toast.makeText(requireContext(),
+                                "Could not load Supjav CD list", Toast.LENGTH_LONG).show();
+                    }
+                }));
+    }
+
+    private void showSupjavServerPicker() {
+        final String detailUrl = activeSupjavUrl();
+        if (detailUrl == null || !isAdded()) return;
+        disposables.add(Single.fromCallable(() -> SupjavServerCatalog.forPage(detailUrl))
+                .subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(entries -> {
+                    if (!isAdded() || !SupjavServerCatalog.pageUrl(detailUrl)
+                            .equals(SupjavServerCatalog.pageUrl(activeSupjavUrl()))) return;
+                    final String part = activeSupjavPart(entries, activeSupjavUrl());
+                    final List<SupjavServerCatalog.Entry> servers =
+                            SupjavServerCatalog.serversForPart(entries, part);
+                    if (servers.isEmpty()) {
+                        new AlertDialog.Builder(requireContext())
+                                .setTitle("Supjav")
+                                .setMessage("No servers for " + part)
+                                .setPositiveButton(android.R.string.ok, null).show();
+                        return;
+                    }
+                    final String[] names = new String[servers.size()];
+                    int checked = -1;
+                    final int selectedIndex = SupjavServerCatalog.selectedIndex(
+                            activeSupjavUrl());
+                    for (int i = 0; i < servers.size(); i++) {
+                        names[i] = servers.get(i).provider;
+                        if (servers.get(i).index == selectedIndex) checked = i;
+                    }
+                    new AlertDialog.Builder(requireContext())
+                            .setTitle("Server · " + part)
+                            .setSingleChoiceItems(names, checked,
+                                    (dialog, position) -> {
+                                        dialog.dismiss();
+                                        navigateToSupjavServer(detailUrl, servers.get(position));
+                                    })
+                            .setNegativeButton(android.R.string.cancel, null)
+                            .show();
+                }, error -> {
+                    DiagnosticLog.error("SUPJAV", "CATALOG_FAILED", error, "server picker");
                     if (isAdded()) {
                         Toast.makeText(requireContext(),
                                 "Could not load Supjav server list", Toast.LENGTH_LONG).show();
@@ -1921,6 +2045,11 @@ public final class VideoDetailFragment
                             showSupjavServerPicker();
                         }
                         break;
+                    case ACTION_SUPJAV_CD_PICKER:
+                        if (serviceId == ServiceList.Supjav.getServiceId()) {
+                            showSupjavCdPicker();
+                        }
+                        break;
                     case ACTION_HIDE_MAIN_PLAYER:
                         bottomSheetBehavior.setState(BottomSheetBehavior.STATE_HIDDEN);
                         break;
@@ -1956,6 +2085,7 @@ public final class VideoDetailFragment
         final IntentFilter intentFilter = new IntentFilter();
         intentFilter.addAction(ACTION_SHOW_MAIN_PLAYER);
         intentFilter.addAction(ACTION_SUPJAV_SERVER_PICKER);
+        intentFilter.addAction(ACTION_SUPJAV_CD_PICKER);
         intentFilter.addAction(ACTION_HIDE_MAIN_PLAYER);
         intentFilter.addAction(ACTION_PLAYER_STARTED);
         intentFilter.addAction(ACTION_ENTER_FULLSCREEN);

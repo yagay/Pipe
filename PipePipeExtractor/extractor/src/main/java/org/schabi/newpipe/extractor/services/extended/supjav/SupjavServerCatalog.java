@@ -104,6 +104,58 @@ public final class SupjavServerCatalog {
         return entries.get(0).index;
     }
 
+    /**
+     * CD labels in their source order. "Main" is used only when the site
+     * has no actual disc grouping. No server names are fabricated.
+     */
+    public static List<String> parts(final List<Entry> entries) {
+        final Set<String> parts = new LinkedHashSet<>();
+        if (entries != null) {
+            for (final Entry entry : entries) parts.add(entry.part);
+        }
+        return Collections.unmodifiableList(new ArrayList<>(parts));
+    }
+
+    /** The server picker must never include another CD's entries. */
+    public static List<Entry> serversForPart(final List<Entry> entries, final String part) {
+        final List<Entry> matched = new ArrayList<>();
+        if (entries != null && part != null) {
+            for (final Entry entry : entries) {
+                if (part.equals(entry.part)) matched.add(entry);
+            }
+        }
+        return Collections.unmodifiableList(matched);
+    }
+
+    public static Entry entryForIndex(final List<Entry> entries, final int index) {
+        if (entries != null) {
+            for (final Entry entry : entries) {
+                if (entry.index == index) return entry;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * On CD change keep the same provider when it exists on that CD.
+     * Otherwise choose VAS from *that CD*, then its first real entry.
+     * Never select VAS from another CD.
+     */
+    public static Entry preferredForPart(final List<Entry> entries, final String part,
+                                          final String previousProvider) {
+        final List<Entry> local = serversForPart(entries, part);
+        if (local.isEmpty()) return null;
+        if (previousProvider != null) {
+            for (final Entry entry : local) {
+                if (previousProvider.equalsIgnoreCase(entry.provider)) return entry;
+            }
+        }
+        for (final Entry entry : local) {
+            if ("VAS".equalsIgnoreCase(entry.provider)) return entry;
+        }
+        return local.get(0);
+    }
+
     public static String selectedUrl(final String detailUrl, final int index) {
         if (index < 0 || index >= 80) throw new IllegalArgumentException("Invalid server index");
         return pageUrl(detailUrl) + "?pipe_server=" + index;

@@ -94,6 +94,37 @@ public final class SupjavArchitectureTest {
     }
 
     @Test
+    public void cdAndServerPickersAreStrictlyScopedAndPreservePreferredProvider() {
+        final String html = "<div class='btnst'>"
+                + "<a data-cd='1' data-link='x1'>EVS</a>"
+                + "<a data-cd='1' data-link='x2'>VAS</a>"
+                + "<a data-cd='1' data-link='x3'>LUC</a>"
+                + "<a data-cd='2' data-link='y1'>EVS</a>"
+                + "<a data-cd='2' data-link='y2'>VOE</a>"
+                + "<a data-cd='2' data-link='y3'>LUC</a></div>";
+        final List<SupjavServerCatalog.Entry> entries =
+                SupjavServerCatalog.parse(Jsoup.parse(html, DETAIL), DETAIL);
+        assertEquals(java.util.Arrays.asList("CD1", "CD2"),
+                SupjavServerCatalog.parts(entries));
+        final List<SupjavServerCatalog.Entry> first =
+                SupjavServerCatalog.serversForPart(entries, "CD1");
+        final List<SupjavServerCatalog.Entry> second =
+                SupjavServerCatalog.serversForPart(entries, "CD2");
+        assertEquals(3, first.size());
+        assertEquals(3, second.size());
+        assertEquals("VAS", first.get(1).provider);
+        assertEquals("VOE", second.get(1).provider);
+        assertEquals("LUC", SupjavServerCatalog.preferredForPart(
+                entries, "CD2", "LUC").provider);
+        // CD2 has no VAS: fallback must stay in CD2, never jump to CD1 VAS.
+        assertEquals("EVS", SupjavServerCatalog.preferredForPart(
+                entries, "CD2", "VAS").provider);
+        assertNull(SupjavServerCatalog.preferredForPart(entries, "CD3", "LUC"));
+        assertEquals(5, SupjavServerCatalog.entryForIndex(entries, 5).index);
+        assertNull(SupjavServerCatalog.entryForIndex(entries, 80));
+    }
+
+    @Test
     public void defaultUsesRealFirstLineWhenVasNotPresent() {
         final List<SupjavServerCatalog.Entry> entries = SupjavServerCatalog.parse(
                 Jsoup.parse("<div class='btnst'><a data-link='evs'>EVS</a>"
