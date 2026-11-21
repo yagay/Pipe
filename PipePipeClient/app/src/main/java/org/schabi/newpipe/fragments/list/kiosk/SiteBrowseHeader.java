@@ -100,7 +100,9 @@ final class SiteBrowseHeader {
         int selected = -1;
         for (int i = 0; i < items.size(); i++) {
             labels[i] = items.get(i).getLabel();
-            if (items.get(i).getId().equals(activeId)) {
+            if (items.get(i).getId().equals(activeId)
+                    || (items.get(i).getId().startsWith("sort:")
+                        && activeId.equals("category:" + items.get(i).getUrl()))) {
                 selected = i;
             }
         }
@@ -134,9 +136,20 @@ final class SiteBrowseHeader {
         categoriesToolbar.addView(choose);
         categoriesToolbar.setVisibility(View.VISIBLE);
         root.findViewById(R.id.site_browse_container).setVisibility(View.VISIBLE);
-        choose.setOnClickListener(v -> showOptions("Categories", categories));
+        choose.setOnClickListener(v -> {
+            if (!categories.isEmpty()) {
+                showOptions("Categories", categories);
+            }
+        });
         if (!sorts.isEmpty()) {
-            final TextView sortButton = makeOptionButton("Sort ▾");
+            String sortTitle = "Sort ▾";
+            for (final SiteBrowseCatalog.Entry sort : sorts) {
+                if (activeId.equals("category:" + sort.getUrl())) {
+                    sortTitle = sort.getLabel() + " ▾";
+                    break;
+                }
+            }
+            final TextView sortButton = makeOptionButton(sortTitle);
             categoriesToolbar.addView(sortButton);
             sortButton.setOnClickListener(v -> showOptions("Sort", sorts));
         }
