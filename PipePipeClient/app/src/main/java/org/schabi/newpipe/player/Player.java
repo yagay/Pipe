@@ -112,6 +112,7 @@ import org.schabi.newpipe.databinding.PlayerBinding;
 import org.schabi.newpipe.databinding.PlayerPopupCloseOverlayBinding;
 import org.schabi.newpipe.error.ErrorInfo;
 import org.schabi.newpipe.error.ErrorUtil;
+import org.schabi.newpipe.diagnostics.DiagnosticLog;
 import org.schabi.newpipe.error.UserAction;
 import org.schabi.newpipe.extractor.*;
 import org.schabi.newpipe.extractor.exceptions.ExtractionException;
@@ -3168,6 +3169,8 @@ public final class Player implements
     @Override
     public void onPlayerError(@NonNull final PlaybackException error) {
         Log.e(TAG, "ExoPlayer - onPlayerError() called with:", error);
+        DiagnosticLog.error("PLAYER", "EXOPLAYER_" + error.errorCode,
+                error, "playback failure");
 
         saveStreamProgressState();
         boolean isCatchableException = false;
