@@ -52,10 +52,10 @@ public final class SupjavBrowserHlsDocument {
                     quality:function(index){
                       if(!hls||!Number.isInteger(index)||index< -1||
                          index>=hls.levels.length)return;
-                      // loadLevel is a conservative, non-flushing switch.
-                      // currentLevel flushes the buffer and can cause a black
-                      // screen when the selected CDN's next fragment is slow.
-                      qualityIndex=index;hls.loadLevel=index;
+                      // Match the working upstream Supjav renderer. The
+                      // requested quality is used for the next fragment
+                      // without forcing a current-buffer flush.
+                      qualityIndex=index;hls.nextLevel=index;
                       report('QUALITY:'+(index<0?'Auto':
                         (hls.levels[index].height?
                           hls.levels[index].height+'p':'源画质')));
@@ -155,16 +155,16 @@ public final class SupjavBrowserHlsDocument {
                         return level.height||0;}).join(','));
                       if(highest>=0){
                         qualityIndex=highest;
-                        // Set the initial fragment quality BEFORE Hls.js starts
-                        // loading it, and keep subsequent fragments on it.
-                        // Unlike currentLevel this does not flush any buffer.
-                        hls.startLevel=highest;
-                        hls.loadLevel=highest;
+                        // Upstream Supjav's working highest-quality mode
+                        // selects the next fragment via nextLevel. Do not
+                        // force startLevel/loadLevel together at startup.
+                        hls.nextLevel=highest;
                         var selectedLevel=hls.levels[highest];
                         report('QUALITY:'+(selectedLevel.height?
                           selectedLevel.height+'p':'源画质'));
                         report('NETWORK_DIAG:SOURCE_HIGHEST_LEVEL_'+highest
-                          +'_HEIGHT_'+(selectedLevel.height||0));
+                          +'_HEIGHT_'+(selectedLevel.height||0)
+                          +'_BITRATE_'+(selectedLevel.bitrate||0));
                       }else{
                         // A direct/source-only manifest exposes no alternatives.
                         report('QUALITY:源画质');
