@@ -51,6 +51,9 @@ public final class SupjavHlsEngine {
     private boolean selectedApplied;
     private boolean attempted;
     private boolean ready;
+    private boolean failed;
+    private long lastPositionMs = -1;
+    private long lastProgressLogUptime;
     private String page;
     private String manifest;
     private String referer;
@@ -79,6 +82,8 @@ public final class SupjavHlsEngine {
         }
         page = clean;
         selectedIndex = index;
+        DiagnosticLog.event("SUPJAV_ENGINE", "RESOLVER_OPEN",
+                "serverIndex=" + index);
         final int active = generation;
         surface.setVisibility(View.VISIBLE);
         surface.setBackgroundColor(0xFF000000);
@@ -244,6 +249,7 @@ public final class SupjavHlsEngine {
         listener.onStatus("正在启动 HLS…");
         player = new WebView(surface.getContext());
         player.setBackgroundColor(0xFF000000);
+        player.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         final WebSettings settings = player.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
@@ -266,10 +272,24 @@ public final class SupjavHlsEngine {
                     final String[] fields = state.substring(9).split(":");
                     if (fields.length == 3) {
                         try {
-                            listener.onPosition((long) (Double.parseDouble(fields[0]) * 1000),
-                                    (long) (Double.parseDouble(fields[1]) * 1000),
-                                    "1".equals(fields[2]));
-                        } catch (final NumberFormatException ignored) { }
+                            final long pos = (long) (Double.parseDouble(fields[0]) * 1000);
+                            final long duration = (long) (Double.parseDouble(fields[1]) * 1000);
+                            final boolean paused = "1".equals(fields[2]);
+                            listener.onPosition(pos, duration, paused);
+                            final long now = android.os.SystemClock.uptimeMillis();
+                            if (lastPositionMs < 0 || now - lastProgressLogUptime > 5000) {
+                                DiagnosticLog.event("SUPJAV_ENGINE", "VIDEO_PROGRESS",
+                                        "posMs=" + pos + " durationMs=" + duration
+                                        + " paused=" + paused
+                                        + " advanced=" + (lastPositionMs >= 0
+                                            && pos > lastPositionMs));
+                                lastProgressLogUptime = now;
+                                lastPositionMs = pos;
+                            }
+                        } catch (final NumberFormatException ignored) {
+                            DiagnosticLog.event("SUPJAV_ENGINE", "POSITION_PARSE_ERROR",
+                                    "invalid progress fields");
+                        }
                     }
                 } else if (state.startsWith("LEVELS:")) {
                     final java.util.List<Integer> heights = new java.util.ArrayList<>();
@@ -283,22 +303,49 @@ public final class SupjavHlsEngine {
                     listener.onQuality(state.substring(8));
                 } else if ("READY".equals(state)) {
                     ready = true;
+                    DiagnosticLog.event("SUPJAV_ENGINE", "VIDEO_READY",
+                            "decoded video data available");
                     listener.onReady();
                 } else if ("PLAYING".equals(state)) {
                     ready = true;
+                    DiagnosticLog.event("SUPJAV_ENGINE", "VIDEO_PLAYING",
+                            "video element reports actual playback");
                     listener.onPlaying();
                     if (resolver != null) resolver.onPause();
                 } else if ("ENDED".equals(state)) {
                     listener.onEnded();
                 } else if (state.startsWith("ERROR:")) {
-                    DiagnosticLog.event("SUPJAV_ENGINE", "HLS_FAILED",
-                            "code=" + state.substring(6));
-                    listener.onFailure(state.substring(6));
+                    fail(state.substring(6));
+                } else if ("SCRIPT_FAILED".equals(state)) {
+                    fail("hls-library-load-failed");
+                } else if ("BOOTSTRAP".equals(state) || "SCRIPT_LOADED".equals(state)
+                        || "MANIFEST_PARSED".equals(state) || "WAITING".equals(state)
+                        || "STALLED".equals(state) || "AUTOPLAY_RESTRICTED".equals(state)
+                        || state.startsWith("METADATA:")
+                        || state.startsWith("FIRST_FRAME:")) {
+                    DiagnosticLog.event("SUPJAV_ENGINE", "WEB_STATE",
+                            "state=" + state);
                 }
                 return true;
             }
         });
         player.setWebViewClient(new WebViewClient() {
+            @Override public void onPageFinished(final WebView view, final String url) {
+                if (generation == active && view == player) {
+                    DiagnosticLog.event("SUPJAV_ENGINE", "HLS_PAGE_LOADED",
+                            "width=" + view.getWidth() + " height=" + view.getHeight()
+                                    + " visible=" + view.isShown());
+                }
+            }
+            @Override public void onReceivedError(final WebView view,
+                    final WebResourceRequest request,
+                    final android.webkit.WebResourceError error) {
+                if (generation == active && view == player && request.isForMainFrame()) {
+                    DiagnosticLog.event("SUPJAV_ENGINE", "HLS_PAGE_ERROR",
+                            "code=" + error.getErrorCode());
+                    fail("hls-document-load-error");
+                }
+            }
             @Override public void onReceivedHttpError(final WebView view,
                         final WebResourceRequest request, final WebResourceResponse response) {
                 if (response.getStatusCode() >= 400) {
@@ -310,14 +357,33 @@ public final class SupjavHlsEngine {
         });
         surface.addView(player, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        surface.requestLayout();
+        player.post(() -> {
+            if (generation == active && player == playingView) {
+                DiagnosticLog.event("SUPJAV_ENGINE", "VIEW_ATTACHED",
+                        "surfaceWidth=" + surface.getWidth()
+                        + " surfaceHeight=" + surface.getHeight()
+                        + " videoWidth=" + player.getWidth()
+                        + " videoHeight=" + player.getHeight()
+                        + " visible=" + player.isShown());
+            }
+        });
         DiagnosticLog.event("SUPJAV_ENGINE", "START",
                 "mediaHost=" + Uri.parse(manifest).getHost()
                 + " refHost=" + Uri.parse(referer).getHost());
         player.loadDataWithBaseURL(referer,
                 SupjavBrowserHlsDocument.render(manifest), "text/html", "UTF-8", null);
         main.postDelayed(() -> {
-            if (generation == active && !ready) listener.onFailure("HLS initialization timeout");
+            if (generation == active && !ready) fail("no-decoded-video-after-18s");
         }, 18000);
+    }
+
+    private void fail(final String reason) {
+        if (failed) return;
+        failed = true;
+        DiagnosticLog.event("SUPJAV_ENGINE", "HLS_FAILED",
+                "reason=" + reason);
+        listener.onFailure(reason);
     }
 
     public void command(final String safeCommand) {
@@ -332,6 +398,9 @@ public final class SupjavHlsEngine {
         generation++;
         main.removeCallbacksAndMessages(null);
         ready = false;
+        failed = false;
+        lastPositionMs = -1;
+        lastProgressLogUptime = 0;
         attempted = false;
         selectedApplied = false;
         manifest = null;
