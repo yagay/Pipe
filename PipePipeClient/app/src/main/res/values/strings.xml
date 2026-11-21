@@ -938,6 +938,7 @@
 <string name="stat_evaluation">Evaluation</string>
 <string name="button_view_pictures">View Images (%d)</string>
 <string name="previous">Previous</string>
+<string name="player_next_item">Next video</string>
 <string name="error_priority_notice">Priority: Issues on GitHub/CodeBerg &gt; Emails with clear title, polite content and bug report &gt; Bug report only emails. \nBug report only emails will not receive replies.</string>
 <string name="sleep_timer_length_title">Sleep Timer</string>
 <string name="error_match_notification_title">Found a match for the error you encountered</string>
