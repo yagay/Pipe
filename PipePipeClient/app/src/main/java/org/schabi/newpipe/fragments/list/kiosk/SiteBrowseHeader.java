@@ -1,5 +1,6 @@
 package org.schabi.newpipe.fragments.list.kiosk;
 
+import android.app.AlertDialog;
 import android.graphics.Typeface;
 import android.util.TypedValue;
 import android.view.View;
@@ -11,8 +12,14 @@ import androidx.annotation.NonNull;
 
 import org.schabi.newpipe.R;
 import org.schabi.newpipe.extractor.kiosk.SiteBrowseCatalog;
+import org.schabi.newpipe.extractor.StreamingService;
 
 import java.util.List;
+import java.util.Collections;
+import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers;
+import io.reactivex.rxjava3.schedulers.Schedulers;
+import io.reactivex.rxjava3.core.Single;
+import io.reactivex.rxjava3.disposables.CompositeDisposable;
 import java.util.function.Consumer;
 
 /**
@@ -23,21 +30,86 @@ import java.util.function.Consumer;
 final class SiteBrowseHeader {
     private final View root;
     private final LinearLayout tabs;
+    private final LinearLayout categoriesToolbar;
+    private final CompositeDisposable disposable = new CompositeDisposable();
     private final Consumer<SiteBrowseCatalog.Entry> navigate;
     private final String activeId;
     private final int padding;
+    private List<SiteBrowseCatalog.Entry> categories = Collections.emptyList();
 
     SiteBrowseHeader(@NonNull final View view,
                      @NonNull final List<SiteBrowseCatalog.Entry> entries,
+                     @NonNull final StreamingService service,
                      @NonNull final String selectedKioskId,
                      @NonNull final Consumer<SiteBrowseCatalog.Entry> navigation) {
         root = view;
         tabs = view.findViewById(R.id.site_browse_tabs);
+        categoriesToolbar = view.findViewById(R.id.site_category_toolbar);
         navigate = navigation;
         activeId = selectedKioskId;
         padding = (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP,
                 12, view.getResources().getDisplayMetrics());
         render(entries);
+        if (service instanceof org.schabi.newpipe.extractor.services.kissjav.KissJavService
+                || service instanceof org.schabi.newpipe.extractor.services.eightyfivepo.EightyFivePoService) {
+            loadCategories(service);
+        }
+    }
+
+    private void loadCategories(final StreamingService service) {
+        disposable.add(Single.fromCallable(() -> SiteBrowseCatalog.getWebsiteCategories(service))
+                .subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(result -> {
+                    if (root.isAttachedToWindow() && !result.isEmpty()) {
+                        categories = result;
+                        renderCategories();
+                    }
+                }, error -> android.util.Log.w("SiteBrowse", "Category list unavailable", error)));
+    }
+
+    private void renderCategories() {
+        categoriesToolbar.removeAllViews();
+        final TextView choose = new TextView(root.getContext());
+        choose.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        choose.setPadding(padding, padding / 2, padding, padding / 2);
+        String selectedName = "Categories ▾";
+        for (final SiteBrowseCatalog.Entry item : categories) {
+            if (item.getId().equals(activeId)) {
+                selectedName = item.getLabel() + " ▾";
+                break;
+            }
+        }
+        choose.setText(selectedName);
+        choose.setTypeface(null, Typeface.BOLD);
+        choose.setClickable(true);
+        categoriesToolbar.addView(choose);
+        categoriesToolbar.setVisibility(View.VISIBLE);
+        root.findViewById(R.id.site_browse_container).setVisibility(View.VISIBLE);
+        choose.setOnClickListener(v -> {
+            final String[] labels = new String[categories.size()];
+            int selected = -1;
+            for (int i = 0; i < categories.size(); i++) {
+                labels[i] = categories.get(i).getLabel();
+                if (categories.get(i).getId().equals(activeId)) {
+                    selected = i;
+                }
+            }
+            new AlertDialog.Builder(root.getContext())
+                    .setTitle("Categories")
+                    .setSingleChoiceItems(labels, selected, (dialog, index) -> {
+                        dialog.dismiss();
+                        if (!categories.get(index).getId().equals(activeId)) {
+                            navigate.accept(categories.get(index));
+                        }
+                    })
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .show();
+        });
+    }
+
+    void dispose() {
+        disposable.dispose();
     }
 
     private void render(final List<SiteBrowseCatalog.Entry> entries) {
@@ -45,11 +117,11 @@ final class SiteBrowseHeader {
         // The site might only expose one list; do not waste vertical space
         // with a row of buttons which cannot change the current page.
         if (entries.size() < 2) {
-            final View header = root.findViewById(R.id.site_browse_header);
-            header.setVisibility(View.GONE);
+            root.findViewById(R.id.site_browse_header).setVisibility(View.GONE);
             return;
         }
         root.findViewById(R.id.site_browse_header).setVisibility(View.VISIBLE);
+        root.findViewById(R.id.site_browse_container).setVisibility(View.VISIBLE);
         for (final SiteBrowseCatalog.Entry item : entries) {
             final TextView tab = new TextView(root.getContext());
             tab.setText(item.getLabel());
