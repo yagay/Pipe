@@ -157,7 +157,7 @@ final class SupjavServerResolver {
         if (!SupjavProviderExtractor.safePublicHttps(url)) return false;
         try {
             final String path = URI.create(url).getPath().toLowerCase(java.util.Locale.ROOT);
-            return path.matches("^/(?:e|embed|player|v|supjav\.php)(?:/.*)?$")
+            return path.matches("^/(?:e|embed|player|v|supjav\\.php)(?:/.*)?$")
                     || path.matches("^/(?:e|embed|player|v)/.+");
         } catch (final Exception ignored) {
             return false;
