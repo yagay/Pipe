@@ -46,14 +46,15 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
     private FrameLayout root;
     private LinearLayout content;
     private WebView browser;
-    private TextView hlsButton;
+    private TextView statusText;
+    private FrameLayout loadingLayer;
     private volatile String observedManifest;
     private volatile String observedReferer;
     private WebView embeddedHls;
     private FrameLayout embeddedContainer;
     private boolean embeddedReady;
     private boolean embeddedAttempted;
-    private boolean allowAutoHls;
+    private boolean mediaDiscoveryCompleted;
     private final Handler hlsHandler = new Handler(Looper.getMainLooper());
     private View fullscreen;
     private WebChromeClient.CustomViewCallback fullscreenCallback;
@@ -96,30 +97,49 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         setContentView(root);
 
-        final TextView back = new TextView(this);
-        back.setGravity(Gravity.CENTER_VERTICAL);
-        back.setPadding(dp(18), 0, dp(12), 0);
-        back.setText("‹  Supjav · Web player");
-        back.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
-        back.setOnClickListener(v -> finish());
-        content.addView(back, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
-
-        hlsButton = new TextView(this);
-        hlsButton.setText("Website player · detecting HLS");
-        hlsButton.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-        hlsButton.setGravity(Gravity.CENTER);
-        hlsButton.setPadding(dp(12), 0, dp(12), 0);
-        hlsButton.setOnClickListener(v -> startEmbeddedHls(false));
-        content.addView(hlsButton, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(40)));
-        allowAutoHls = selectedServer >= 0
-                && SupjavServerCatalog.selectedProviderIs(
-                        SupjavServerCatalog.selectedUrl(url, selectedServer), "LUC");
-
         browser = new WebView(this);
         content.addView(browser, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        // This provider WebView is a live resolver, not the visible player UI.
+        // Keep it attached/running to preserve iframe scripts, cookies and
+        // browser-network requests; an opaque layer hides the website.
+        loadingLayer = new FrameLayout(this);
+        loadingLayer.setBackgroundColor(0xFF000000);
+        root.addView(loadingLayer, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        final LinearLayout loadingControls = new LinearLayout(this);
+        loadingControls.setOrientation(LinearLayout.VERTICAL);
+        loadingControls.setGravity(Gravity.CENTER);
+        statusText = new TextView(this);
+        statusText.setGravity(Gravity.CENTER);
+        statusText.setTextColor(0xFFFFFFFF);
+        statusText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        statusText.setText("正在解析视频播放源…");
+        loadingControls.addView(statusText, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(64)));
+        final TextView websiteButton = new TextView(this);
+        websiteButton.setText("使用网站播放器");
+        websiteButton.setTextColor(0xFFDDDDDD);
+        websiteButton.setGravity(Gravity.CENTER);
+        websiteButton.setPadding(dp(16), dp(16), dp(16), dp(16));
+        websiteButton.setOnClickListener(v -> revealWebsitePlayer("manual"));
+        loadingControls.addView(websiteButton);
+        final TextView exit = new TextView(this);
+        exit.setText("返回");
+        exit.setTextColor(0xFFDDDDDD);
+        exit.setGravity(Gravity.CENTER);
+        exit.setPadding(dp(16), dp(16), dp(16), dp(16));
+        exit.setOnClickListener(v -> finish());
+        loadingControls.addView(exit);
+        loadingLayer.addView(loadingControls, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER));
+        selectionHandler.postDelayed(() -> {
+            if (loadingLayer != null && loadingLayer.getVisibility() == View.VISIBLE
+                    && embeddedHls == null) {
+                revealWebsitePlayer("discovery-timeout");
+            }
+        }, 18000);
         final WebSettings settings = browser.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
@@ -159,10 +179,10 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
                         observedManifest = address.toString();
                         observedReferer = refererForPlayback;
                         runOnUiThread(() -> {
-                            if (hlsButton != null) {
-                                hlsButton.setText("Play with built-in HLS controls");
+                            if (statusText != null) {
+                                statusText.setText("正在启动内置 HLS 播放器…");
                             }
-                            if (allowAutoHls && !embeddedAttempted) {
+                            if (!embeddedAttempted) {
                                 startEmbeddedHls(true);
                             }
                         });
@@ -360,11 +380,9 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
         observedReferer = null;
         closeEmbeddedHls();
         embeddedAttempted = false;
-        allowAutoHls = SupjavServerCatalog.selectedProviderIs(
-                SupjavServerCatalog.selectedUrl(nextPage, nextServer), "LUC");
-        if (hlsButton != null) {
-            hlsButton.setText("Website player · detecting HLS");
-        }
+        mediaDiscoveryCompleted = false;
+        if (loadingLayer != null) loadingLayer.setVisibility(View.VISIBLE);
+        if (statusText != null) statusText.setText("正在解析视频播放源…");
         selectionHandler.removeCallbacksAndMessages(null);
         if (browser != null) {
             browser.stopLoading();
@@ -427,8 +445,12 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
                 if (player != embeddedHls) return true;
                 if ("READY".equals(state)) {
                     embeddedReady = true;
+                    mediaDiscoveryCompleted = true;
+                    if (loadingLayer != null) loadingLayer.setVisibility(View.GONE);
                 } else if ("PLAYING".equals(state)) {
                     embeddedReady = true;
+                    mediaDiscoveryCompleted = true;
+                    if (loadingLayer != null) loadingLayer.setVisibility(View.GONE);
                     browser.onPause();
                 } else if (state.startsWith("ERROR:")) {
                     hlsHandler.post(() -> {
@@ -483,6 +505,14 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
         }
         if (root != null && overlay != null) root.removeView(overlay);
         if (browser != null) browser.onResume();
+        if (!isFinishing() && !isDestroyed() && !mediaDiscoveryCompleted) {
+            revealWebsitePlayer("hls-unavailable");
+        }
+    }
+
+    private void revealWebsitePlayer(final String reason) {
+        if (loadingLayer != null) loadingLayer.setVisibility(View.GONE);
+        DiagnosticLog.event("SUPJAV", "WEBSITE_FALLBACK", "reason=" + reason);
     }
 
     private int dp(final int value) {
@@ -530,6 +560,7 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
     protected void onDestroy() {
         selectionHandler.removeCallbacksAndMessages(null);
         closeEmbeddedHls();
+        loadingLayer = null;
         DiagnosticLog.event("SUPJAV_WEB", "SESSION_END",
                 "mediaRequestsObserved=" + Math.min(mediaRequestsSeen.get(), 16));
         hideFullScreen();
