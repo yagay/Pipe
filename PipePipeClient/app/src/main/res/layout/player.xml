@@ -578,17 +578,15 @@
             android:id="@+id/playButtons"
             android:layout_height="match_parent"
             android:gravity="center"
-            android:orientation="horizontal"
-            android:weightSum="1">
+            android:orientation="horizontal">
 
             
 
 
             <androidx.appcompat.widget.AppCompatImageButton
                 android:id="@+id/playPauseButton"
-                android:layout_width="0dp"
+                android:layout_width="60dp"
                 android:layout_height="60dp"
-                android:layout_weight="1"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:scaleType="fitCenter"
                 app:srcCompat="@drawable/ic_pause"
