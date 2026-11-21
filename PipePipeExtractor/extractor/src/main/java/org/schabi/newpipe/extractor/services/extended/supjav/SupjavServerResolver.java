@@ -127,8 +127,8 @@ final class SupjavServerResolver {
         final String value = item.text().trim().isEmpty()
                 ? item.attr("data-server").trim() : item.text().trim();
         final String result = value.replaceAll(
-                "(?i)\\\\b(?:CD|DISC|PART)[ _-]*[0-9]+\\\\b", "").trim();
-        return result.isEmpty() ? "Player" : result.split("\\\\s+")[0]
+                "(?i)\\b(?:CD|DISC|PART)[ _-]*[0-9]+\\\\b", "").trim();
+        return result.isEmpty() ? "Player" : result.split("\\s+")[0]
                 .toUpperCase(java.util.Locale.ROOT);
     }
 
