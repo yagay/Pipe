@@ -584,7 +584,9 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
     @Override
     public void onBackPressed() {
         if (embeddedHls != null) {
-            closeEmbeddedHls();
+            // Back from the internal player returns to Pipe, not to the
+            // provider's browser page. Website fallback is a separate choice.
+            finish();
         } else if (fullscreen != null) {
             hideFullScreen();
         } else if (browser != null && browser.canGoBack()) {
