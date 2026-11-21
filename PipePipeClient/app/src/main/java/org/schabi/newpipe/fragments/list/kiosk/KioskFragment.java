@@ -196,15 +196,13 @@ public class KioskFragment extends BaseListInfoFragment<StreamInfoItem, KioskInf
                         if (entry.getId().equals(kioskId)) {
                             return;
                         }
-                        if (entry.getId().startsWith("category:")
-                                || entry.getId().startsWith("sort:")
-                                || entry.getId().startsWith("filter:")) {
+                        if (entry.getType() != SiteBrowseCatalog.EntryType.KIOSK) {
                             String destination = entry.getUrl();
-                            if (entry.getId().startsWith("sort:")
-                                    || entry.getId().startsWith("filter:")) {
+                            if (entry.getType() == SiteBrowseCatalog.EntryType.SORT
+                                    || entry.getType() == SiteBrowseCatalog.EntryType.FILTER) {
                                 try {
                                     destination = BrowseUrlState.applyOption(url, entry.getUrl(),
-                                            entry.getId().startsWith("sort:")
+                                            entry.getType() == SiteBrowseCatalog.EntryType.SORT
                                                     ? BrowseUrlState.OptionGroup.SORT
                                                     : BrowseUrlState.OptionGroup.FILTER);
                                 } catch (final IllegalArgumentException invalidOption) {
@@ -216,7 +214,7 @@ public class KioskFragment extends BaseListInfoFragment<StreamInfoItem, KioskInf
                             if (!destination.equals(url)) {
                                 NavigationHelper.openSiteCategoryFragment(getFM(), serviceId,
                                         destination,
-                                        entry.getId().startsWith("category:")
+                                        entry.getType() == SiteBrowseCatalog.EntryType.VIDEO_CATEGORY
                                                 ? entry.getLabel() : kioskTranslatedName);
                             }
                             return;
