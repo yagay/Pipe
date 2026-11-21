@@ -97,8 +97,6 @@ public class MainActivity extends AppCompatActivity {
     private ActionBarDrawerToggle toggle;
 
     private boolean servicesShown = false;
-    // Keep the displayed kiosk IDs stable: a HashMap-backed KioskList has no UI order.
-    private final List<String> drawerKioskIds = new ArrayList<>();
 
     private BroadcastReceiver broadcastReceiver;
 
@@ -228,7 +226,6 @@ public class MainActivity extends AppCompatActivity {
 
         // All site-specific kiosks are presented in the native browse header.
         // The global drawer is reserved for application-level navigation.
-        drawerKioskIds.clear();
         drawerLayoutBinding.navigation.getMenu()
                 .add(R.id.menu_tabs_group, ITEM_ID_HOME, ORDER, "Home")
                 .setIcon(R.drawable.ic_home);
@@ -316,14 +313,6 @@ public class MainActivity extends AppCompatActivity {
                 NavigationHelper.openStatisticFragment(getSupportFragmentManager());
                 break;
             default:
-                if (item.getItemId() >= ITEM_ID_KIOSK_BASE) {
-                    final int index = item.getItemId() - ITEM_ID_KIOSK_BASE;
-                    if (index >= 0 && index < drawerKioskIds.size()) {
-                        NavigationHelper.openKioskFragment(getSupportFragmentManager(),
-                                ServiceHelper.getSelectedServiceId(this),
-                                drawerKioskIds.get(index));
-                    }
-                }
                 break;
         }
     }
