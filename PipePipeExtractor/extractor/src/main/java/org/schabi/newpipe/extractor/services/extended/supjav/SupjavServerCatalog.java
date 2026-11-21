@@ -82,6 +82,28 @@ public final class SupjavServerCatalog {
         }
     }
 
+    /**
+     * Prefer VAS within the requested CD, then another VAS entry. If a video
+     * does not offer VAS, preserve the site's first actual server rather than
+     * fabricating a line or trying a different CD first.
+     */
+    public static int preferredIndex(final List<Entry> entries, final String part) {
+        if (entries == null || entries.isEmpty()) return -1;
+        final String preferredPart = part == null ? entries.get(0).part : part;
+        for (final Entry entry : entries) {
+            if (preferredPart.equals(entry.part) && "VAS".equalsIgnoreCase(entry.provider)) {
+                return entry.index;
+            }
+        }
+        for (final Entry entry : entries) {
+            if ("VAS".equalsIgnoreCase(entry.provider)) return entry.index;
+        }
+        for (final Entry entry : entries) {
+            if (preferredPart.equals(entry.part)) return entry.index;
+        }
+        return entries.get(0).index;
+    }
+
     public static String selectedUrl(final String detailUrl, final int index) {
         if (index < 0 || index >= 80) throw new IllegalArgumentException("Invalid server index");
         return pageUrl(detailUrl) + "?pipe_server=" + index;
