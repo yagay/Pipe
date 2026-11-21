@@ -150,7 +150,7 @@ final class SupjavServerResolver {
         // EarnVids/LuluStream/FST may declare signed HLS URLs under
         // hls2/hls4/hls3 instead of a normal <video> element.
         final java.util.regex.Pattern signedHls = java.util.regex.Pattern.compile(
-                "(?i)(?:[\\\"']?)(hls[234])(?:[\\\"']?)\\\\s*:\\\\s*[\\\"']([^\\\"'<>]{8,3000})[\\\"']");
+                "(?i)(?:[\\\"']?)(hls[234])(?:[\\\"']?)\\s*:\\s*[\\\"']([^\\\"'<>]{8,3000})[\\\"']");
         final java.util.Map<String, String> hls = new LinkedHashMap<>();
         for (final Element script : page.select("script:not([src])")) {
             final String content = script.data().isEmpty() ? script.html() : script.data();
@@ -158,7 +158,7 @@ final class SupjavServerResolver {
             while (found.find()) {
                 final String tag = found.group(1).toLowerCase(java.util.Locale.ROOT);
                 try {
-                    final String raw = found.group(2).replace("\\\\/", "/");
+                    final String raw = found.group(2).replace("\\/", "/");
                     final String url = URI.create(page.location()).resolve(raw).toString();
                     if (safePublicHttps(url) && isMedia(url)) hls.putIfAbsent(tag, url);
                 } catch (final Exception ignored) { }
@@ -201,7 +201,9 @@ final class SupjavServerResolver {
                             final String referer) {
         if (!safePublicHttps(url) || !isMedia(url) || out.containsKey(label + "|" + url)) return;
         final boolean hls = url.toLowerCase(java.util.Locale.ROOT)
-                .matches(".*\\.(?:m3u8|m3u)(?:[?#].*)?");
+                .matches(".*\\.(?:m3u8|m3u)(?:[?#].*)?")
+                || URI.create(url).getPath().toLowerCase(java.util.Locale.ROOT)
+                    .matches(".*/hls[0-9]*/(?:master|index|playlist)[^/]*\\.txt");
         final String quality = Parser.resolution(url);
         out.put(label + "|" + url, new VideoStream.Builder()
                 .setId("SUPJAV|" + label + "|" + quality)
@@ -246,7 +248,7 @@ final class SupjavServerResolver {
         final String lower = URI.create(url).getPath().toLowerCase(java.util.Locale.ROOT);
         return lower.endsWith(".m3u8") || lower.endsWith(".m3u")
                 || lower.endsWith(".mp4")
-                || lower.matches(".*/hls[0-9]*/(?:master|index|playlist)[^/]*\\\\.txt");
+                || lower.matches(".*/hls[0-9]*/(?:master|index|playlist)[^/]*\\.txt");
     }
 
     private static boolean safePublicHttps(final String link) {
