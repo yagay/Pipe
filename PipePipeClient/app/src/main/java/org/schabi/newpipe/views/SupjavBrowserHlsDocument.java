@@ -26,7 +26,10 @@ public final class SupjavBrowserHlsDocument {
                   video{display:block;width:100%;height:100%;object-fit:contain;background:#000}
                 </style></head><body>
                 <video id="video" playsinline webkit-playsinline></video>
-                <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.15/dist/hls.min.js"></script>
+                <script>console.log('PIPE_HLS:BOOTSTRAP');</script>
+                <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.15/dist/hls.min.js"
+                  onload="console.log('PIPE_HLS:SCRIPT_LOADED')"
+                  onerror="console.log('PIPE_HLS:SCRIPT_FAILED')"></script>
                 <script>
                 (function(){
                   'use strict';
@@ -58,9 +61,35 @@ public final class SupjavBrowserHlsDocument {
                       this.quality(qualityIndex>=hls.levels.length-1?-1:qualityIndex+1);
                     }
                   };
-                  video.addEventListener('play',function(){report('PLAYING');});
+                  // The "play" event is only a play REQUEST; the video may be
+                  // stalled on its first segment with no rendered frame.
+                  // Keep Pipe buffering until decoded video data actually exists.
+                  var firstFrame=false;
+                  function frameReady(source){
+                    if(firstFrame)return;
+                    if(video.videoWidth>0&&video.videoHeight>0){
+                      firstFrame=true;
+                      report('FIRST_FRAME:'+video.videoWidth+':'+video.videoHeight+':'+source);
+                    }
+                  }
+                  video.addEventListener('loadedmetadata',function(){
+                    report('METADATA:'+video.videoWidth+':'+video.videoHeight);
+                  });
+                  video.addEventListener('loadeddata',function(){
+                    report('READY');frameReady('loadeddata');
+                  });
+                  video.addEventListener('playing',function(){
+                    report('PLAYING');frameReady('playing');
+                    if(typeof video.requestVideoFrameCallback==='function'){
+                      video.requestVideoFrameCallback(function(){frameReady('callback');});
+                    }
+                  });
+                  video.addEventListener('waiting',function(){report('WAITING');});
+                  video.addEventListener('stalled',function(){report('STALLED');});
                   video.addEventListener('ended',function(){report('ENDED');});
-                  video.addEventListener('error',function(){fail('video-element');});
+                  video.addEventListener('error',function(){
+                    fail('video-element-'+(video.error?video.error.code:'unknown'));
+                  });
                   setInterval(function(){
                     if(video.readyState>0){
                       report('POSITION:'+Number(video.currentTime||0).toFixed(2)+':'+
@@ -73,7 +102,7 @@ public final class SupjavBrowserHlsDocument {
                     var networkRetries=0,mediaRetries=0;
                     hls.on(Hls.Events.MEDIA_ATTACHED,function(){hls.loadSource(url);});
                     hls.on(Hls.Events.MANIFEST_PARSED,function(){
-                      ready=true;report('READY');
+                      ready=true;report('MANIFEST_PARSED');
                       var highest=-1,score=-1;
                       hls.levels.forEach(function(level,index){
                         var value=(level.height||0)*1000000+(level.bitrate||0);
@@ -104,11 +133,14 @@ public final class SupjavBrowserHlsDocument {
                   }else if(video.canPlayType('application/vnd.apple.mpegurl')){
                     video.src=url;
                     video.addEventListener('loadedmetadata',function(){
-                      ready=true;report('READY');
+                      ready=true;report('MANIFEST_PARSED');
                       video.play().catch(function(){report('AUTOPLAY_RESTRICTED');});
                     });
                   }else{fail('hlsjs-unavailable');}
-                  setTimeout(function(){if(!ready)fail('startup-timeout');},14000);
+                  setTimeout(function(){if(!ready)fail('manifest-timeout');},14000);
+                  setTimeout(function(){
+                    if(!firstFrame && video.readyState<2) fail('no-video-frames');
+                  },18000);
                 })();
                 </script></body></html>
                 """.replace("__MEDIA_BASE64__", encoded);
