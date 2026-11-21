@@ -40,7 +40,7 @@ public final class SupjavBrowserHlsDocument {
                   var autoplayBlocked=false,automaticAttempts=0,failed=false;
                   function report(code){console.log('PIPE_HLS:'+code);}
                   function fail(code){
-                    if(failed||decodedData)return;
+                    if(failed)return;
                     failed=true;report('ERROR:'+code);
                   }
                   function requestPlay(reason,manual){
