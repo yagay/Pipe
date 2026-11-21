@@ -70,9 +70,13 @@
 
     <androidx.appcompat.widget.AppCompatImageView
         android:id="@+id/itemHandle"
-        android:layout_width="1dp"
-        android:layout_height="1dp"
-        android:visibility="gone"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+        android:layout_width="26dp"
+        android:layout_height="26dp"
+        android:background="@color/duration_background_color"
+        android:contentDescription="@string/playlist"
+        android:padding="4dp"
+        app:srcCompat="@drawable/ic_drag_handle"
+        app:tint="@android:color/white"
+        app:layout_constraintStart_toStartOf="@id/itemThumbnailView"
+        app:layout_constraintTop_toTopOf="@id/itemThumbnailView" />
 </androidx.constraintlayout.widget.ConstraintLayout>
