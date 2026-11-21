@@ -35,6 +35,7 @@ import androidx.annotation.Nullable;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.schabi.newpipe.DownloaderImpl;
+import org.schabi.newpipe.diagnostics.DiagnosticLog;
 import org.schabi.newpipe.extractor.ServiceList;
 import org.schabi.newpipe.extractor.downloader.Response;
 import org.schabi.newpipe.extractor.exceptions.ParsingException;
@@ -420,8 +421,34 @@ public class PlayerDataSource {
         if (parsed.getScheme() != null && parsed.getHost() != null) {
             headers.put("Origin", parsed.getScheme() + "://" + parsed.getHost());
         }
+        // Some Supjav mirrors reject Origin even though the same signed media
+        // URL accepts its actual player Referer. Retry this single 403 once
+        // without Origin, not with fabricated cookies or a CAPTCHA bypass.
+        final okhttp3.OkHttpClient supjavClient =
+                DownloaderImpl.getInstance().getClient().newBuilder()
+                        .addInterceptor(chain -> {
+                            final okhttp3.Request request = chain.request();
+                            final okhttp3.Response response = chain.proceed(request);
+                            if (response.code() != 403 || request.header("Origin") == null) {
+                                if (response.code() >= 400) {
+                                    DiagnosticLog.event("SUPJAV_NETWORK",
+                                            "HTTP_" + response.code(),
+                                            "host=" + request.url().host());
+                                }
+                                return response;
+                            }
+                            DiagnosticLog.event("SUPJAV_NETWORK", "HTTP_403_ORIGIN_RETRY",
+                                    "host=" + request.url().host());
+                            response.close();
+                            final okhttp3.Response retried = chain.proceed(
+                                    request.newBuilder().removeHeader("Origin").build());
+                            DiagnosticLog.event("SUPJAV_NETWORK",
+                                    "RETRY_HTTP_" + retried.code(),
+                                    "host=" + request.url().host());
+                            return retried;
+                        }).build();
         return new PurifiedDataSource.Factory(context,
-                new OkHttpDataSource.Factory(DownloaderImpl.getInstance().getClient())
+                new OkHttpDataSource.Factory(supjavClient)
                         .setUserAgent("Mozilla/5.0 (Linux; Android 15; Mobile) "
                                 + "AppleWebKit/537.36 (KHTML, like Gecko) "
                                 + "Chrome/131.0.0.0 Mobile Safari/537.36")
