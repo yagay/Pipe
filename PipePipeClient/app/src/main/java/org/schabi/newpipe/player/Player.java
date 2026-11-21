@@ -3171,6 +3171,15 @@ public final class Player implements
         Log.e(TAG, "ExoPlayer - onPlayerError() called with:", error);
         DiagnosticLog.error("PLAYER", "EXOPLAYER_" + error.errorCode,
                 error, "playback failure");
+        final VideoStream failedSource = getSelectedVideoStream();
+        if (failedSource != null && failedSource.getId() != null
+                && failedSource.getId().startsWith("SUPJAV|")) {
+            final String[] origin = failedSource.getId().split("\\|", 4);
+            DiagnosticLog.error("SUPJAV_PLAYER", "SOURCE_ERROR_" + error.errorCode,
+                    error, "cd=" + (origin.length > 1 ? origin[1] : "unknown")
+                            + " server=" + (origin.length > 2 ? origin[2] : "unknown")
+                            + " delivery=" + failedSource.getDeliveryMethod());
+        }
 
         saveStreamProgressState();
         boolean isCatchableException = false;
