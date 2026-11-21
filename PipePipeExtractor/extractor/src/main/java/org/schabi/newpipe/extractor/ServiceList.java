@@ -1,6 +1,7 @@
 package org.schabi.newpipe.extractor;
 
 import org.schabi.newpipe.extractor.services.bandcamp.BandcampService;
+import org.schabi.newpipe.extractor.services.extended.supjav.SupjavService;
 import org.schabi.newpipe.extractor.services.bilibili.BilibiliService;
 import org.schabi.newpipe.extractor.services.eightyfivepo.EightyFivePoService;
 import org.schabi.newpipe.extractor.services.javnoni.JavNoniService;
@@ -86,6 +87,7 @@ public final class ServiceList {
     public static final SimpleHtmlVideoService JavFun = new SimpleHtmlVideoService(19, SimpleHtmlVideoService.Site.JAV_FUN);
     public static final IwaraAiService IwaraAi = new IwaraAiService(20);
     public static final InternetArchiveService InternetArchive = new InternetArchiveService(21);
+    public static final SupjavService Supjav = new SupjavService(22);
     /**
      * When creating a new service, put this service in the end of this list,
      * and give it the next free id.
@@ -96,7 +98,7 @@ public final class ServiceList {
     private static final List<StreamingService> SERVICES = Collections.unmodifiableList(
             java.util.Arrays.asList(MissAV, KissJAV, EightyFivePo, Pornhub, JavNoni, JavSB, TokyoMotion,
                     SpankBang, XHamster, XVideos, Eporner, MrDouga, Ohentai, XNXX, Iwara, OneFourOneTube,
-                    Avgle, Hanime1, JavFun, IwaraAi, InternetArchive));
+                    Avgle, Hanime1, JavFun, IwaraAi, InternetArchive, Supjav));
 
     /**
      * Get all the supported services.
