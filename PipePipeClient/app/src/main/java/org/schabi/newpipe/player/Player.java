@@ -4262,15 +4262,12 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
     //region Popup menus ("popup" means that they pop up, not that they belong to the popup player)
 
     private String playerStreamLabel(final VideoStream stream) {
-        if (stream != null && stream.getId() != null
-                && stream.getId().startsWith("SUPJAV|")) {
-            final String[] fields = stream.getId().split("\\|", 4);
-            if (fields.length > 2) {
-                return (fields[1].equals("Main") ? "" : fields[1] + " · ")
-                        + fields[2];
-            }
-        }
-        return stream == null ? "" : stream.getResolution();
+        if (stream == null) return "";
+        // CD and server are already displayed in their own player controls.
+        // This button is for quality only, so it must not repeat CD1 · LUC.
+        final String quality = stream.getResolution();
+        return quality == null || quality.isEmpty()
+                || quality.equalsIgnoreCase("unknown") ? "Quality" : quality;
     }
 
     private void buildQualityMenu() {
