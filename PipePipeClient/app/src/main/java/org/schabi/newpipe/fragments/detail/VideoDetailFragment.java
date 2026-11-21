@@ -362,13 +362,28 @@ public final class VideoDetailFragment
         return binding.getRoot();
     }
 
+    /**
+     * Dragging and settling are transient Material BottomSheet states and must
+     * never be passed back to BottomSheetBehavior.setState() after rotation.
+     * Persist only stable states. Any stale transient value from an older
+     * saved instance safely becomes EXPANDED (the detail-player default).
+     */
+    private static int stableBottomSheetState(final int state) {
+        if (state == BottomSheetBehavior.STATE_COLLAPSED
+                || state == BottomSheetBehavior.STATE_EXPANDED
+                || state == BottomSheetBehavior.STATE_HIDDEN) {
+            return state;
+        }
+        return BottomSheetBehavior.STATE_EXPANDED;
+    }
+
     @Override
     public void onSaveInstanceState(@NonNull final Bundle outState) {
         super.onSaveInstanceState(outState);
         outState.putInt("serviceId", serviceId);
         outState.putString("title", title);
         outState.putString("url", url);
-        outState.putInt("bottomSheetState", bottomSheetState);
+        outState.putInt("bottomSheetState", stableBottomSheetState(bottomSheetState));
         outState.putBoolean("autoPlayEnabled", autoPlayEnabled);
         outState.putString("currentSponsorBlockMode", currentSponsorBlockMode != null ? currentSponsorBlockMode.name() : null);
     }
@@ -379,7 +394,8 @@ public final class VideoDetailFragment
         serviceId = savedInstanceState.getInt("serviceId", Constants.NO_SERVICE_ID);
         title = savedInstanceState.getString("title", "");
         url = savedInstanceState.getString("url");
-        bottomSheetState = savedInstanceState.getInt("bottomSheetState", BottomSheetBehavior.STATE_EXPANDED);
+        bottomSheetState = stableBottomSheetState(savedInstanceState.getInt(
+                "bottomSheetState", BottomSheetBehavior.STATE_EXPANDED));
         autoPlayEnabled = savedInstanceState.getBoolean("autoPlayEnabled", true);
         String modeStr = savedInstanceState.getString("currentSponsorBlockMode");
         currentSponsorBlockMode = modeStr != null ? SponsorBlockMode.valueOf(modeStr) : null;
@@ -1630,6 +1646,10 @@ public final class VideoDetailFragment
     private void displaySupjavInPipePlayer(final String selectedUrl) {
         if (!isAdded() || binding == null || player == null || playerService == null) return;
         addVideoPlayerView();
+        // The animation may still be STATE_SETTLING if fullscreen rotation
+        // recreates this fragment immediately. Persist the intended stable
+        // destination instead of the animation's transient state.
+        bottomSheetState = BottomSheetBehavior.STATE_EXPANDED;
         if (bottomSheetBehavior != null) {
             bottomSheetBehavior.setState(BottomSheetBehavior.STATE_EXPANDED);
         }
@@ -2796,6 +2816,10 @@ public final class VideoDetailFragment
 
         final FrameLayout bottomSheetLayout = activity.findViewById(R.id.fragment_player_holder);
         bottomSheetBehavior = BottomSheetBehavior.from(bottomSheetLayout);
+        // Previous versions could persist STATE_SETTLING during fullscreen
+        // rotation. Normalize both the persisted value and the live field
+        // before calling Material's state setter.
+        bottomSheetState = stableBottomSheetState(bottomSheetState);
         bottomSheetBehavior.setState(bottomSheetState);
         final int peekHeight = getResources().getDimensionPixelSize(R.dimen.mini_player_height);
         if (bottomSheetState != BottomSheetBehavior.STATE_HIDDEN) {
@@ -2812,7 +2836,13 @@ public final class VideoDetailFragment
         bottomSheetBehavior.setBottomSheetCallback(new BottomSheetBehavior.BottomSheetCallback() {
             @Override
             public void onStateChanged(@NonNull final View bottomSheet, final int newState) {
-                bottomSheetState = newState;
+                // Remember only stable destinations; DRAGGING and SETTLING
+                // describe a transition, not an externally restorable state.
+                if (newState == BottomSheetBehavior.STATE_HIDDEN
+                        || newState == BottomSheetBehavior.STATE_COLLAPSED
+                        || newState == BottomSheetBehavior.STATE_EXPANDED) {
+                    bottomSheetState = newState;
+                }
                 try {
                     switch (newState) {
                         case BottomSheetBehavior.STATE_HIDDEN:
