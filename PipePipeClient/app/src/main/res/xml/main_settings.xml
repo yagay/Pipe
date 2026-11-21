@@ -92,8 +92,8 @@
     <Preference
         android:key="pipe_export_diagnostics_main"
         android:icon="@drawable/ic_bug_report"
-        android:title="Export diagnostic ZIP"
-        android:summary="Share local error, network, source and playback diagnostics"
+        android:title="Save diagnostic ZIP to Downloads"
+        android:summary="Directly save a ZIP in Downloads without a file chooser"
         app:iconSpaceReserved="false" />
 
     <PreferenceScreen
