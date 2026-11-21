@@ -73,7 +73,7 @@
         android:layout_width="26dp"
         android:layout_height="26dp"
         android:background="@color/duration_background_color"
-        android:contentDescription="@string/playlist"
+        android:contentDescription="@string/play_queue_drag_handle"
         android:padding="4dp"
         app:srcCompat="@drawable/ic_drag_handle"
         app:tint="@android:color/white"
