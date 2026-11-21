@@ -14,7 +14,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.Locale;
-import java.util.regex.Pattern;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -156,7 +155,7 @@ public final class SiteBrowseCatalog {
                     && path.matches("/video/?") && q.matches("(?:^|.*&)c=[0-9]+(?:&.*)?")) {
                 return true;
             }
-            return path.matches("(?i).*/(?:categories|category|tags|tag|genres|genre|topics|topic|channels|channel|collections|collection|uncensored|amateur|c)/[^/]+/?")
+            return path.matches("(?i).*/(?:categories|category|tags|tag|genres|genre|topics|topic|channels|channel|collections|collection|uncensored|amateur|cat|c)/[^/]+/?")
                     || path.matches("(?i).*/(?:categories|category|tags|tag|genres|genre)/[^/]+/page/[0-9]+/?");
         } catch (final URISyntaxException ignored) {
             return false;
@@ -243,7 +242,9 @@ public final class SiteBrowseCatalog {
             return previous.entries;
         }
         try {
-            final String home = service.getBaseUrl() + "/";
+            final String home = service instanceof EightyFivePoService
+                    ? EightyFivePoParsingHelper.BASE_URL + "/ja/"
+                    : service.getBaseUrl() + "/";
             final Document document = fetchSitePage(service,
                     service instanceof KissJavService
                             ? KissJavParsingHelper.BASE_URL + "/categories/" : home);
@@ -261,7 +262,7 @@ public final class SiteBrowseCatalog {
                     found.putIfAbsent(canonical, new Entry("category:" + canonical,
                             label, canonical));
                 } else if (categoryIndex == null && !target.equals(home)
-                        && target.matches("(?i)https://[^/]+/(?:[a-z]{2}/)?(?:categories|category|genres|genre|tags|tag)/?")) {
+                        && target.matches("(?i)https://[^/]+/(?:[a-z]{2}/)?(?:categories|category|porn-categories|genres|genre|tags|tag|cat)/?")) {
                     categoryIndex = target;
                 }
             }
