@@ -68,6 +68,7 @@ import org.schabi.newpipe.extractor.NewPipe;
 import org.schabi.newpipe.extractor.ServiceList;
 import org.schabi.newpipe.extractor.services.extended.supjav.SupjavServerCatalog;
 import org.schabi.newpipe.diagnostics.DiagnosticLog;
+import org.schabi.newpipe.views.SupjavWebPlayerActivity;
 import org.schabi.newpipe.extractor.exceptions.ContentNotSupportedException;
 import org.schabi.newpipe.extractor.exceptions.ExtractionException;
 import org.schabi.newpipe.extractor.sponsorblock.SponsorBlockAction;
@@ -1096,7 +1097,7 @@ public final class VideoDetailFragment
                                 .setPositiveButton("Other servers",
                                         (dialog, which) -> showSupjavServerPicker())
                                 .setNeutralButton("Open website", (dialog, which) ->
-                                        ShareUtils.openUrlInBrowser(requireContext(),
+                                        SupjavWebPlayerActivity.open(requireContext(),
                                                 SupjavServerCatalog.pageUrl(url)))
                                 .setNegativeButton(android.R.string.cancel, null)
                                 .show();
@@ -1571,7 +1572,7 @@ public final class VideoDetailFragment
                                 .setTitle("Supjav")
                                 .setMessage("No server entries on this video page.")
                                 .setPositiveButton("Open website", (dialog, which) ->
-                                        ShareUtils.openUrlInBrowser(requireContext(),
+                                        SupjavWebPlayerActivity.open(requireContext(),
                                                 SupjavServerCatalog.pageUrl(detailUrl)))
                                 .setNegativeButton(android.R.string.cancel, null).show();
                         return;
@@ -1607,8 +1608,8 @@ public final class VideoDetailFragment
                                                 null);
                                     })
                             .setNeutralButton("Open website", (dialog, which) ->
-                                    ShareUtils.openUrlInBrowser(requireContext(),
-                                            SupjavServerCatalog.pageUrl(detailUrl)))
+                                    SupjavWebPlayerActivity.open(requireContext(),
+                                                SupjavServerCatalog.pageUrl(detailUrl)))
                             .setNegativeButton(android.R.string.cancel, null)
                             .show();
                 }, error -> {
