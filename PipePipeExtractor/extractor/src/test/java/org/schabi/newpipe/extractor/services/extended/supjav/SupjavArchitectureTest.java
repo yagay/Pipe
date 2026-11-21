@@ -80,6 +80,59 @@ public final class SupjavArchitectureTest {
     }
 
     @Test
+    public void defaultPrefersVasOnFirstCdAndPreservesManualAvailability() {
+        final String html = "<div class='btnst'>"
+                + "<a data-link='evs1'>EVS</a><a data-link='vas1'>VAS</a>"
+                + "<a data-link='luc1'>LUC</a>"
+                + "<a data-link='evs2'>EVS</a><a data-link='vas2'>VAS</a>"
+                + "<a data-link='luc2'>LUC</a></div>";
+        final List<SupjavServerCatalog.Entry> entries = SupjavServerCatalog.parse(
+                Jsoup.parse(html, DETAIL), DETAIL);
+        assertEquals(1, SupjavServerCatalog.preferredIndex(entries, null));
+        assertEquals(4, SupjavServerCatalog.preferredIndex(entries, "CD2"));
+        assertEquals(6, entries.size());
+    }
+
+    @Test
+    public void defaultUsesRealFirstLineWhenVasNotPresent() {
+        final List<SupjavServerCatalog.Entry> entries = SupjavServerCatalog.parse(
+                Jsoup.parse("<div class='btnst'><a data-link='evs'>EVS</a>"
+                        + "<a data-link='voe'>VOE</a></div>", DETAIL), DETAIL);
+        assertEquals(0, SupjavServerCatalog.preferredIndex(entries, null));
+    }
+
+    @Test
+    public void evsAndLucPreferSignedHls2OverHls4AndHls3() {
+        final String player = "<script>var sources = {"
+                + "hls3:'https://cdn.example.com/hls3/master.txt?key=c',"
+                + "hls4:'https://cdn.example.com/hls4/master.txt?key=b',"
+                + "hls2:'https://cdn.example.com/hls2/master.m3u8?key=a'};</script>";
+        for (final String provider : new String[]{"EVS", "LUC"}) {
+            final SupjavServerCatalog.Entry entry = new SupjavServerCatalog.Entry(
+                    0, "Main", provider, "sample", DETAIL);
+            final List<VideoStream> streams = SupjavProviderExtractor.extract(
+                    Jsoup.parse(player, "https://player.example/e/sample"), entry);
+            assertEquals(3, streams.size());
+            assertTrue(streams.get(0).getContent().contains("/hls2/"));
+            assertTrue(streams.get(1).getContent().contains("/hls4/"));
+            assertTrue(streams.get(2).getContent().contains("/hls3/"));
+        }
+    }
+
+    @Test
+    public void voeRedirectsOnlyFollowDeclaredPlayerAndIgnoreGenericScripts() {
+        final SupjavServerCatalog.Entry entry = new SupjavServerCatalog.Entry(
+                0, "Main", "VOE", "sample", DETAIL);
+        final String html = "<script>window.location.href="
+                + "'https://media.example/e/valid123';</script>"
+                + "<a href='https://ads.example/advert.mp4'>ad</a>";
+        final List<String> pages = SupjavProviderExtractor.declaredPlayerRedirects(
+                Jsoup.parse(html, "https://voe.example/e/entry"), entry);
+        assertEquals(1, pages.size());
+        assertEquals("https://media.example/e/valid123", pages.get(0));
+    }
+
+    @Test
     public void selectedServerIndexIsBounded() {
         assertEquals(-1, SupjavServerCatalog.selectedIndex(DETAIL + "?pipe_server=99"));
         assertEquals(-1, SupjavServerCatalog.selectedIndex(DETAIL + "?pipe_server=-1"));
