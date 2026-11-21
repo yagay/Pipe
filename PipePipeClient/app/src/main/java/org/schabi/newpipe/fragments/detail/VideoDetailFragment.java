@@ -1560,15 +1560,17 @@ public final class VideoDetailFragment
 
     private String activeSupjavPart(final List<SupjavServerCatalog.Entry> entries,
                                     final String detailUrl) {
+        final SupjavServerCatalog.Entry selected = SupjavServerCatalog.entryForIndex(
+                entries, SupjavServerCatalog.selectedIndex(detailUrl));
+        // The actual selected URL is authoritative, e.g. when Back restores
+        // CD1 after a previous CD2 selection on the same video page.
+        if (selected != null) return selected.part;
         final String page = SupjavServerCatalog.pageUrl(detailUrl);
         if (page.equals(supjavSelectedPartPage) && supjavSelectedPart != null
                 && !SupjavServerCatalog.serversForPart(entries, supjavSelectedPart).isEmpty()) {
             return supjavSelectedPart;
         }
-        final SupjavServerCatalog.Entry selected = SupjavServerCatalog.entryForIndex(
-                entries, SupjavServerCatalog.selectedIndex(detailUrl));
-        return selected != null ? selected.part
-                : entries.isEmpty() ? "Main" : entries.get(0).part;
+        return entries.isEmpty() ? "Main" : entries.get(0).part;
     }
 
     private android.widget.TextView ensureSupjavSourceButton(
