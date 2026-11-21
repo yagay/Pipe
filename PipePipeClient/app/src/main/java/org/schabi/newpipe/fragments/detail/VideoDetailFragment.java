@@ -214,6 +214,7 @@ public final class VideoDetailFragment
     int bottomSheetState = BottomSheetBehavior.STATE_EXPANDED;
     protected boolean autoPlayEnabled = true;
     private boolean supjavPlayAfterSelection = false;
+    @Nullable private String pendingSupjavPlayerUrl;
     SponsorBlockMode currentSponsorBlockMode = null;
 
     @Nullable
@@ -253,6 +254,12 @@ public final class VideoDetailFragment
                                    final boolean playAfterConnect) {
         player = connectedPlayer;
         playerService = connectedPlayerService;
+        if (pendingSupjavPlayerUrl != null) {
+            final String selected = pendingSupjavPlayerUrl;
+            pendingSupjavPlayerUrl = null;
+            displaySupjavInPipePlayer(selected);
+            return;
+        }
 
         // It will do nothing if the player is not in fullscreen mode
         hideSystemUiIfNeeded();
@@ -1093,7 +1100,13 @@ public final class VideoDetailFragment
                         // dialog or a provider-specific media probe.
                         DiagnosticLog.event("SUPJAV", "UNIFIED_PLAYER_RECOVERY",
                                 "serverIndex=" + SupjavServerCatalog.selectedIndex(url));
-                        SupjavWebPlayerActivity.open(requireContext(), url);
+                        pendingSupjavPlayerUrl = url;
+                        if (isPlayerServiceAvailable() && player != null) {
+                            pendingSupjavPlayerUrl = null;
+                            displaySupjavInPipePlayer(url);
+                        } else {
+                            playerHolder.startService(false, this);
+                        }
                     } else {
                         showError(new ErrorInfo(throwable, UserAction.REQUESTED_STREAM,
                                 url == null ? "no url" : url, serviceId));
@@ -1594,14 +1607,28 @@ public final class VideoDetailFragment
                 "part=" + selected.part + " server=" + selected.provider
                         + " index=" + selected.index);
         final String target = SupjavServerCatalog.selectedUrl(detailUrl, selected.index);
-        // One playback entry for every Supjav provider/CD. The shared in-app
-        // controller discovers media in its provider WebView and renders
-        // browser HLS where available. No provider-specific branching here.
+        // All servers use the same original Pipe PlayerBinding view.
+        // WebView is only a browser HLS transport within that player.
         supjavPlayAfterSelection = false;
-        DiagnosticLog.event("SUPJAV", "UNIFIED_PLAYER_OPEN",
+        DiagnosticLog.event("SUPJAV", "PIPE_PLAYER_SELECTED",
                 "part=" + selected.part + " provider=" + selected.provider
                         + " index=" + selected.index);
-        SupjavWebPlayerActivity.open(requireContext(), target);
+        pendingSupjavPlayerUrl = target;
+        if (isPlayerServiceAvailable() && player != null) {
+            pendingSupjavPlayerUrl = null;
+            displaySupjavInPipePlayer(target);
+        } else {
+            playerHolder.startService(false, this);
+        }
+    }
+
+    private void displaySupjavInPipePlayer(final String selectedUrl) {
+        if (!isAdded() || binding == null || player == null || playerService == null) return;
+        addVideoPlayerView();
+        if (bottomSheetBehavior != null) {
+            bottomSheetBehavior.setState(BottomSheetBehavior.STATE_EXPANDED);
+        }
+        player.startSupjavHls(selectedUrl);
     }
 
     private void showSupjavServerPicker() {
