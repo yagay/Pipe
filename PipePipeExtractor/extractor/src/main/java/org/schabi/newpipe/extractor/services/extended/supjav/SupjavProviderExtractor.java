@@ -201,7 +201,7 @@ final class SupjavProviderExtractor {
         }
     }
 
-    private static void add(final Map<String, VideoStream> out,
+    static void add(final Map<String, VideoStream> out,
                             final String url, final String label,
                             final String referer) {
         if (!safePublicHttps(url) || !isMedia(url) || out.containsKey(label + "|" + url)) return;
@@ -249,14 +249,18 @@ final class SupjavProviderExtractor {
         }
     }
 
-    private static boolean isMedia(final String url) {
+    static boolean isMedia(final String url) {
         final String lower = URI.create(url).getPath().toLowerCase(java.util.Locale.ROOT);
         return lower.endsWith(".m3u8") || lower.endsWith(".m3u")
                 || lower.endsWith(".mp4")
+                || (("/get_video".equals(lower))
+                    && (URI.create(url).getHost().equalsIgnoreCase("streamtape.com")
+                    || URI.create(url).getHost().equalsIgnoreCase("streamtape.to"))
+                    && URI.create(url).getRawQuery() != null)
                 || lower.matches(".*/hls[0-9]*/(?:master|index|playlist)[^/]*\\.txt");
     }
 
-    private static boolean safePublicHttps(final String link) {
+    static boolean safePublicHttps(final String link) {
         try {
             final URI url = URI.create(link);
             final String host = url.getHost();
