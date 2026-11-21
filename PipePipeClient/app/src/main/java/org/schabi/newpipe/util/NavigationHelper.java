@@ -510,6 +510,16 @@ public final class NavigationHelper {
                 .commit();
     }
 
+    public static void openSiteCategoryFragment(final FragmentManager fragmentManager,
+                                                final int serviceId, final String pageUrl,
+                                                final String label) {
+        defaultTransaction(fragmentManager)
+                .replace(R.id.fragment_holder,
+                        KioskFragment.getSiteCategoryInstance(serviceId, pageUrl, label))
+                .addToBackStack(null)
+                .commit();
+    }
+
     public static void openMissAvBrowseFragment(final FragmentManager fragmentManager,
                                                   final int serviceId,
                                                   final String pageUrl,
