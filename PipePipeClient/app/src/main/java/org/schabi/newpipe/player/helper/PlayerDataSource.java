@@ -401,48 +401,66 @@ public class PlayerDataSource {
 
     public HlsMediaSource.Factory getSupjavHlsMediaSourceFactory(
             @Nullable final String pageReferer) {
-        return getSupjavHlsMediaSourceFactory(pageReferer, true, null);
+        return getSupjavHlsMediaSourceFactory(pageReferer, true);
     }
 
     public HlsMediaSource.Factory getSupjavHlsMediaSourceFactory(
             @Nullable final String pageReferer, final boolean includeOrigin) {
-        return getSupjavHlsMediaSourceFactory(pageReferer, includeOrigin, null);
-    }
-
-    public HlsMediaSource.Factory getSupjavHlsMediaSourceFactory(
-            @Nullable final String pageReferer, final boolean includeOrigin,
-            @Nullable final String sourceUrl) {
         return new HlsMediaSource.Factory(
-                supjavDataSourceFactory(pageReferer, includeOrigin, sourceUrl))
+                supjavDataSourceFactory(pageReferer, includeOrigin))
                 .setAllowChunklessPreparation(true);
     }
 
     public ProgressiveMediaSource.Factory getSupjavProgressiveMediaSourceFactory(
             @Nullable final String pageReferer) {
-        return getSupjavProgressiveMediaSourceFactory(pageReferer, true, null);
+        return getSupjavProgressiveMediaSourceFactory(pageReferer, true);
     }
 
     public ProgressiveMediaSource.Factory getSupjavProgressiveMediaSourceFactory(
             @Nullable final String pageReferer, final boolean includeOrigin) {
-        return getSupjavProgressiveMediaSourceFactory(pageReferer, includeOrigin, null);
-    }
-
-    public ProgressiveMediaSource.Factory getSupjavProgressiveMediaSourceFactory(
-            @Nullable final String pageReferer, final boolean includeOrigin,
-            @Nullable final String sourceUrl) {
         return new ProgressiveMediaSource.Factory(
-                supjavDataSourceFactory(pageReferer, includeOrigin, sourceUrl))
+                supjavDataSourceFactory(pageReferer, includeOrigin))
                 .setContinueLoadingCheckIntervalBytes(continueLoadingCheckIntervalBytes);
     }
 
+    // LUC mirrors the successful standalone Supjav PlaybackEngine: use
+    // Media3 DefaultHttpDataSource with the precise native probe header policy.
+    // No Pipe-wide cookies, web session, or second playback engine.
+    public HlsMediaSource.Factory getSupjavLucHlsMediaSourceFactory(
+            @Nullable final String pageReferer, final boolean includeOrigin) {
+        return new HlsMediaSource.Factory(
+                supjavLucNativeDataSourceFactory(pageReferer, includeOrigin))
+                .setAllowChunklessPreparation(true);
+    }
+
+    private DataSource.Factory supjavLucNativeDataSourceFactory(
+            @Nullable final String pageReferer, final boolean includeOrigin) {
+        final String referer = pageReferer != null && pageReferer.startsWith("https://")
+                ? pageReferer : "https://supjav.com/";
+        final Map<String, String> headers = new HashMap<>();
+        headers.put("Referer", referer);
+        headers.put("User-Agent", "Mozilla/5.0 (Linux; Android 15; Mobile) "
+                + "AppleWebKit/537.36 (KHTML, like Gecko) "
+                + "Chrome/131.0.0.0 Mobile Safari/537.36");
+        if (includeOrigin) {
+            final android.net.Uri ref = android.net.Uri.parse(referer);
+            if (ref.getScheme() != null && ref.getHost() != null) {
+                headers.put("Origin", ref.getScheme() + "://" + ref.getHost());
+            }
+        }
+        final androidx.media3.datasource.DefaultHttpDataSource.Factory nativeFactory =
+                new androidx.media3.datasource.DefaultHttpDataSource.Factory()
+                        .setConnectTimeoutMs(15000)
+                        .setReadTimeoutMs(25000)
+                        .setDefaultRequestProperties(headers);
+        return new PurifiedDataSource.Factory(context, nativeFactory)
+                .setTransferListener(transferListener);
+    }
+
     private DataSource.Factory supjavDataSourceFactory(
-            @Nullable final String pageReferer, final boolean includeOrigin,
-            @Nullable final String sourceUrl) {
+            @Nullable final String pageReferer, final boolean includeOrigin) {
         final String ref = pageReferer != null && pageReferer.startsWith("https://")
                 ? pageReferer : "https://supjav.com/";
-        final org.schabi.newpipe.player.datasource.SupjavLucNetworkContext.Profile
-                lucProfile = org.schabi.newpipe.player.datasource.SupjavLucNetworkContext
-                        .forMedia(sourceUrl);
         final Map<String, String> headers = new HashMap<>();
         headers.put("Referer", ref);
         headers.put("Accept", "*/*");
@@ -450,24 +468,9 @@ public class PlayerDataSource {
         if (includeOrigin && parsed.getScheme() != null && parsed.getHost() != null) {
             headers.put("Origin", parsed.getScheme() + "://" + parsed.getHost());
         }
-        // Only the browser-verified LUC URL uses its WebView User-Agent and
-        // cookies. CookieManager scopes cookies separately for each outgoing
-        // HTTPS host, including HLS child playlists and segments.
+        // The original behavior is intentionally retained for non-LUC sources.
         final okhttp3.OkHttpClient supjavClient =
                 DownloaderImpl.getInstance().getClient().newBuilder()
-                        .addNetworkInterceptor(chain -> {
-                            // This runs again on every redirect/segment host.
-                            // Never reuse another hostname's Cookie header.
-                            final okhttp3.Request request = chain.request();
-                            if (lucProfile == null) return chain.proceed(request);
-                            final String cookie = org.schabi.newpipe.player.datasource
-                                    .SupjavLucNetworkContext.cookiesForRequest(
-                                            request.url().toString());
-                            final okhttp3.Request.Builder withCookies = request.newBuilder()
-                                    .removeHeader("Cookie");
-                            if (cookie != null) withCookies.header("Cookie", cookie);
-                            return chain.proceed(withCookies.build());
-                        })
                         .addInterceptor(chain -> {
                             final okhttp3.Request request = chain.request();
                             final okhttp3.Response response = chain.proceed(request);
@@ -489,14 +492,11 @@ public class PlayerDataSource {
                                     "host=" + request.url().host());
                             return retried;
                         }).build();
-        final String browserAgent = lucProfile == null ? null : lucProfile.userAgent;
         return new PurifiedDataSource.Factory(context,
                 new OkHttpDataSource.Factory(supjavClient)
-                        .setUserAgent(browserAgent == null
-                                ? "Mozilla/5.0 (Linux; Android 15; Mobile) "
-                                        + "AppleWebKit/537.36 (KHTML, like Gecko) "
-                                        + "Chrome/131.0.0.0 Mobile Safari/537.36"
-                                : browserAgent)
+                        .setUserAgent("Mozilla/5.0 (Linux; Android 15; Mobile) "
+                                + "AppleWebKit/537.36 (KHTML, like Gecko) "
+                                + "Chrome/131.0.0.0 Mobile Safari/537.36")
                         .setDefaultRequestProperties(headers))
                 .setTransferListener(transferListener);
     }

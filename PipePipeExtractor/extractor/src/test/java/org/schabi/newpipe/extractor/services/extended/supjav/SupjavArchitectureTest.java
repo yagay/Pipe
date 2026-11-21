@@ -142,29 +142,30 @@ public final class SupjavArchitectureTest {
     }
 
     @Test
-    public void browserVerifiedLucSourceIsBoundToExactCdAndOriginalServerToken() {
-        final String html = "<div class='btnst'>"
-                + "<a data-link='evsA'>EVS</a><a data-link='lucCD1'>LUC</a>"
-                + "<a data-link='evsB'>EVS</a><a data-link='lucCD2'>LUC</a></div>";
-        final List<SupjavServerCatalog.Entry> entries = SupjavServerCatalog.parse(
-                Jsoup.parse(html, DETAIL), DETAIL);
-        final SupjavServerCatalog.Entry cd1 = entries.get(1);
-        final SupjavServerCatalog.Entry cd2 = entries.get(3);
-        final String media = "https://cdn.example.com/hls2/master.m3u8?sig=xyz";
-        final String ref = "https://luluvdo.example.com/e/selected";
-        assertTrue(SupjavLucNativeCache.registerVerified(cd1, media, ref, false));
-        final VideoStream selected = SupjavLucNativeCache.find(cd1);
-        assertNotNull(selected);
-        assertTrue(selected.getContent().contains("sig=xyz"));
-        assertTrue(selected.getContent().endsWith("&origin=0"));
-        assertNull(SupjavLucNativeCache.find(cd2));
-        assertNull(SupjavLucNativeCache.find(
-                new SupjavServerCatalog.Entry(cd1.index, cd1.part,
-                        "LUC", "different-link", cd1.page)));
-        assertFalse(SupjavLucNativeCache.registerVerified(
-                entries.get(0), media, ref, true));
-        SupjavLucNativeCache.clear(cd1);
-        assertNull(SupjavLucNativeCache.find(cd1));
+    public void lucNativeGatewayRejectsUnsafeRedirectsAndPreservesSignedQueries() {
+        assertEquals("https://luminscdn.xyz/e/abc?token=A%2BB",
+                SupjavLucNativeGateway.checkedRedirect(
+                        "https://lk1.supremejav.com/supjav.php?c=ABC",
+                        "https://luminscdn.xyz/e/abc?token=A%2BB"));
+        assertEquals("https://luminscdn.xyz/e/next",
+                SupjavLucNativeGateway.checkedRedirect(
+                        "https://luminscdn.xyz/e/old", "/e/next"));
+        assertNull(SupjavLucNativeGateway.checkedRedirect(
+                "https://luminscdn.xyz/e/old", "http://127.0.0.1/payload"));
+        assertNull(SupjavLucNativeGateway.checkedRedirect(
+                "https://luminscdn.xyz/e/old", "https://localhost/payload"));
+        assertTrue(SupjavLucNativeGateway.retryable(403));
+        assertTrue(SupjavLucNativeGateway.retryable(416));
+        assertFalse(SupjavLucNativeGateway.retryable(404));
+        final SupjavServerCatalog.Entry luc =
+                new SupjavServerCatalog.Entry(4, "CD1", "LUC", "token", DETAIL);
+        final VideoStream signed = SupjavProviderExtractor.extract(
+                Jsoup.parse("<script>var links={hls2:"
+                                + "'https://cdn.example.com/hls2/master.m3u8?sig=a%26b'};"
+                                + "</script>",
+                        "https://luminscdn.xyz/e/abc"), luc).get(0);
+        assertEquals("https://cdn.example.com/hls2/master.m3u8?sig=a%26b",
+                SupjavLucNativeGateway.mediaUrl(signed));
     }
 
     @Test

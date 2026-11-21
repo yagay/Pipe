@@ -401,10 +401,15 @@ public interface PlaybackResolver extends Resolver<StreamInfo, MediaSource> {
             @NonNull final MediaItemTag metadata) throws IOException {
         final String url = stream.getContent();
         if (isNullOrEmpty(url)) throw new IOException("Empty Supjav HLS URL");
-        return dataSource.getSupjavHlsMediaSourceFactory(
-                extractSupjavReferer(url),
-                !url.endsWith("&origin=0"),
-                stripStreamMarker(url, "#supjav=1")).createMediaSource(
+        final boolean luc = stream.getId() != null
+                && stream.getId().startsWith("SUPJAV|")
+                && stream.getId().contains("|LUC|");
+        final HlsMediaSource.Factory factory = luc
+                ? dataSource.getSupjavLucHlsMediaSourceFactory(
+                        extractSupjavReferer(url), !url.endsWith("&origin=0"))
+                : dataSource.getSupjavHlsMediaSourceFactory(
+                        extractSupjavReferer(url), !url.endsWith("&origin=0"));
+        return factory.createMediaSource(
                 new MediaItem.Builder().setTag(metadata)
                         .setUri(Uri.parse(stripStreamMarker(url, "#supjav=1")))
                         .setCustomCacheKey(cacheKey).build());
@@ -421,8 +426,7 @@ public interface PlaybackResolver extends Resolver<StreamInfo, MediaSource> {
         if (isNullOrEmpty(url)) throw new IOException("Empty Supjav MP4 URL");
         return dataSource.getSupjavProgressiveMediaSourceFactory(
                 extractSupjavReferer(url),
-                !url.endsWith("&origin=0"),
-                stripStreamMarker(url, "#supjav=1")).createMediaSource(
+                !url.endsWith("&origin=0")).createMediaSource(
                 new MediaItem.Builder().setTag(metadata)
                         .setUri(Uri.parse(stripStreamMarker(url, "#supjav=1")))
                         .setCustomCacheKey(cacheKey).build());
