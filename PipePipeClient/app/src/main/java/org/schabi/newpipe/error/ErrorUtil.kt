@@ -15,6 +15,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.fragment.app.Fragment
 import com.google.android.material.snackbar.Snackbar
+import org.schabi.newpipe.diagnostics.DiagnosticLog
 import org.schabi.newpipe.R
 
 /**
@@ -43,6 +44,7 @@ class ErrorUtil {
          */
         @JvmStatic
         fun openActivity(context: Context, errorInfo: ErrorInfo) {
+            DiagnosticLog.error("UI", "ERROR_ACTIVITY", errorInfo.throwable, "open error screen")
             context.startActivity(getErrorActivityIntent(context, errorInfo))
         }
 
@@ -84,6 +86,7 @@ class ErrorUtil {
          */
         @JvmStatic
         fun showUiErrorSnackbar(context: Context, request: String, throwable: Throwable) {
+            DiagnosticLog.error("UI", "SNACKBAR", throwable, request)
             showSnackbar(context, ErrorInfo(throwable, UserAction.UI_ERROR, request))
         }
 
@@ -92,6 +95,7 @@ class ErrorUtil {
          */
         @JvmStatic
         fun showUiErrorSnackbar(fragment: Fragment, request: String, throwable: Throwable) {
+            DiagnosticLog.error("UI", "SNACKBAR", throwable, request)
             showSnackbar(fragment, ErrorInfo(throwable, UserAction.UI_ERROR, request))
         }
 
@@ -107,6 +111,7 @@ class ErrorUtil {
          */
         @JvmStatic
         fun createNotification(context: Context, errorInfo: ErrorInfo) {
+            DiagnosticLog.error("BACKGROUND", "ERROR_NOTIFICATION", errorInfo.throwable, "error notification")
             var pendingIntentFlags = PendingIntent.FLAG_UPDATE_CURRENT
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 pendingIntentFlags = pendingIntentFlags or PendingIntent.FLAG_IMMUTABLE
