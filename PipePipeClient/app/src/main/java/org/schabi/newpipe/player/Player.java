@@ -682,13 +682,20 @@ public final class Player implements
                         binding.playPauseButton.setImageResource(R.drawable.ic_pause);
                         updateSupjavSession(
                                 android.support.v4.media.session.PlaybackStateCompat.STATE_PLAYING);
-                        if (!supjavForegroundNotification) {
-                            NotificationUtil.getInstance().createNotificationAndStartForeground(
-                                    Player.this, service.getInstance());
-                            supjavForegroundNotification = true;
-                        } else {
-                            NotificationUtil.getInstance()
-                                    .createNotificationIfNeededAndUpdate(Player.this, false);
+                        try {
+                            if (!supjavForegroundNotification) {
+                                NotificationUtil.getInstance().createNotificationAndStartForeground(
+                                        Player.this, service.getInstance());
+                                supjavForegroundNotification = true;
+                            } else {
+                                NotificationUtil.getInstance()
+                                        .createNotificationIfNeededAndUpdate(Player.this, false);
+                            }
+                        } catch (final RuntimeException notificationError) {
+                            // Browser video must remain usable even when Android
+                            // restricts foreground-service startup.
+                            DiagnosticLog.error("SUPJAV_ENGINE", "MEDIA_NOTIFICATION_ERROR",
+                                    notificationError, "browser HLS media session");
                         }
                         notifyPlaybackUpdateToListeners();
                     }
