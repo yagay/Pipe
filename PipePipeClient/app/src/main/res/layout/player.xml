@@ -21,6 +21,16 @@
         android:layout_alignBottom="@+id/surfaceView"
         android:background="@android:color/black" />
 
+    <!-- Browser HLS is an alternate video surface inside the existing Pipe player.
+         All control widgets below remain the original PlayerBinding controls. -->
+    <FrameLayout
+        android:id="@+id/supjavHlsSurface"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_centerInParent="true"
+        android:background="@android:color/black"
+        android:visibility="gone" />
+
     <androidx.media3.ui.SubtitleView
         android:id="@+id/subtitleView"
         android:layout_width="match_parent"
