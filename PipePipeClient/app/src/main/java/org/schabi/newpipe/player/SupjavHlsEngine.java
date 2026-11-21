@@ -34,6 +34,7 @@ public final class SupjavHlsEngine {
         void onStatus(String status);
         void onPosition(long positionMs, long durationMs, boolean paused);
         void onQuality(String label);
+        void onQualityLevels(java.util.List<Integer> heights);
         void onPlaying();
         void onEnded();
         void onFailure(String reason);
@@ -261,6 +262,14 @@ public final class SupjavHlsEngine {
                                     "1".equals(fields[2]));
                         } catch (final NumberFormatException ignored) { }
                     }
+                } else if (state.startsWith("LEVELS:")) {
+                    final java.util.List<Integer> heights = new java.util.ArrayList<>();
+                    for (final String height : state.substring(7).split(",")) {
+                        if (height.matches("[0-9]{1,5}")) {
+                            heights.add(Integer.parseInt(height));
+                        }
+                    }
+                    listener.onQualityLevels(heights);
                 } else if (state.startsWith("QUALITY:")) {
                     listener.onQuality(state.substring(8));
                 } else if ("READY".equals(state) || "PLAYING".equals(state)) {
@@ -301,7 +310,7 @@ public final class SupjavHlsEngine {
 
     public void command(final String safeCommand) {
         if (player != null && ready && safeCommand.matches(
-                "(?:toggle\\(\\)|play\\(\\)|pause\\(\\)|cycleQuality\\(\\)|seek\\(-?[0-9]+\\)|seekFraction\\([0-9.]+\\)|speed\\([0-9.]+\\))")) {
+                "(?:toggle\\(\\)|play\\(\\)|pause\\(\\)|cycleQuality\\(\\)|quality\\(-?[0-9]+\\)|seek\\(-?[0-9]+\\)|seekFraction\\([0-9.]+\\)|speed\\([0-9.]+\\))")) {
             player.evaluateJavascript("(function(){if(window.PipeHls)window.PipeHls."
                     + safeCommand + ";})()", null);
         }
