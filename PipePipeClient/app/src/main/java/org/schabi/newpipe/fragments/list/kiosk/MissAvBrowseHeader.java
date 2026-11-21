@@ -40,6 +40,8 @@ final class MissAvBrowseHeader {
     private Map<String, List<MissAvBrowseCatalog.Entry>> entries =
             Collections.emptyMap();
     private int expandedGroup = -1;
+    private boolean loadingCategories;
+    private boolean categoryLoadFailed;
     private List<MissAvBrowseCatalog.Entry> currentFilters = Collections.emptyList();
     private List<MissAvBrowseCatalog.Entry> currentSorts = Collections.emptyList();
     private TextView[] headings = new TextView[MissAvBrowseCatalog.GROUPS.length];
@@ -58,17 +60,7 @@ final class MissAvBrowseHeader {
         panelScroll.setVisibility(View.GONE);
         renderChannels();
         renderToolbar("Categories", Collections.emptyList(), Collections.emptyList());
-        subscriptions.add(Single.fromCallable(MissAvBrowseCatalog::getCategories)
-                .subscribeOn(Schedulers.io())
-                .observeOn(AndroidSchedulers.mainThread())
-                .subscribe(categories -> {
-                    if (!isAttached()) {
-                        return;
-                    }
-                    entries = categories;
-                    renderChannels();
-                    renderToolbar(currentCategoryLabel(), currentFilters, currentSorts);
-                }, error -> android.util.Log.w("MissAV", "Category navigation unavailable", error)));
+        reloadCategories(false);
 
         subscriptions.add(Single.fromCallable(() ->
                         MissAvBrowseCatalog.getPageOptions(pageUrl))
@@ -81,6 +73,44 @@ final class MissAvBrowseHeader {
                         renderToolbar(currentCategoryLabel(), currentFilters, currentSorts);
                     }
                 }, error -> android.util.Log.w("MissAV", "Page options unavailable", error)));
+    }
+
+    private void reloadCategories(final boolean refresh) {
+        if (loadingCategories) {
+            return;
+        }
+        loadingCategories = true;
+        categoryLoadFailed = false;
+        if (refresh) {
+            MissAvBrowseCatalog.invalidateCategories();
+        }
+        renderToolbar(currentCategoryLabel(), currentFilters, currentSorts);
+        subscriptions.add(Single.fromCallable(MissAvBrowseCatalog::getCategories)
+                .subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(categories -> {
+                    loadingCategories = false;
+                    if (!isAttached()) {
+                        return;
+                    }
+                    entries = categories;
+                    categoryLoadFailed = false;
+                    renderChannels();
+                    renderToolbar(currentCategoryLabel(), currentFilters, currentSorts);
+                    if (expandedGroup >= 0) {
+                        renderExpandedGroup();
+                    }
+                }, error -> {
+                    loadingCategories = false;
+                    categoryLoadFailed = true;
+                    android.util.Log.w("MissAV", "Category navigation unavailable", error);
+                    if (isAttached()) {
+                        renderToolbar(currentCategoryLabel(), currentFilters, currentSorts);
+                        if (expandedGroup >= 0) {
+                            renderExpandedGroup();
+                        }
+                    }
+                }));
     }
 
     private boolean isAttached() {
@@ -123,6 +153,22 @@ final class MissAvBrowseHeader {
         return a.split("[?#]", 2)[0].equalsIgnoreCase(b.split("[?#]", 2)[0]);
     }
 
+    private int selectedGroupIndex() {
+        for (int i = 0; i < MissAvBrowseCatalog.GROUPS.length; i++) {
+            final List<MissAvBrowseCatalog.Entry> items =
+                    entries.get(MissAvBrowseCatalog.GROUPS[i][0]);
+            if (items == null) {
+                continue;
+            }
+            for (final MissAvBrowseCatalog.Entry item : items) {
+                if (sameCategory(pageUrl, item.url)) {
+                    return i;
+                }
+            }
+        }
+        return 0;
+    }
+
     private void renderChannels() {
         channels.removeAllViews();
         headings = new TextView[MissAvBrowseCatalog.GROUPS.length];
@@ -152,8 +198,12 @@ final class MissAvBrowseHeader {
         final String name = MissAvBrowseCatalog.GROUPS[expandedGroup][0];
         final List<MissAvBrowseCatalog.Entry> items = entries.get(name);
         if (items == null || items.isEmpty()) {
-            final TextView message = textButton("No categories available");
+            final TextView message = textButton(
+                    loadingCategories ? "Loading categories…"
+                    : categoryLoadFailed ? "Unable to load categories · Tap to retry"
+                    : "No categories available");
             panel.addView(message);
+            message.setOnClickListener(v -> reloadCategories(true));
         } else {
             for (final MissAvBrowseCatalog.Entry item : items) {
                 final TextView button = textButton(item.label);
@@ -184,8 +234,24 @@ final class MissAvBrowseHeader {
                                final List<MissAvBrowseCatalog.Entry> filters,
                                final List<MissAvBrowseCatalog.Entry> sorts) {
         toolbar.removeAllViews();
-        final TextView name = textButton(category);
+        final TextView name = textButton(
+                categoryLoadFailed ? "Categories · Retry" : category);
         name.setTypeface(null, Typeface.BOLD);
+        name.setSingleLine(true);
+        name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        name.setOnClickListener(v -> {
+            if (categoryLoadFailed) {
+                reloadCategories(true);
+                return;
+            }
+            if (expandedGroup >= 0) {
+                expandedGroup = -1;
+            } else {
+                expandedGroup = selectedGroupIndex();
+            }
+            renderChannels();
+            renderExpandedGroup();
+        });
         final LinearLayout.LayoutParams nameParams =
                 new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         toolbar.addView(name, nameParams);
