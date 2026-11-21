@@ -67,6 +67,8 @@ import org.schabi.newpipe.extractor.InfoItem;
 import org.schabi.newpipe.extractor.NewPipe;
 import org.schabi.newpipe.extractor.ServiceList;
 import org.schabi.newpipe.extractor.services.extended.supjav.SupjavServerCatalog;
+import org.schabi.newpipe.extractor.services.extended.supjav.SupjavLucNativeCache;
+import org.schabi.newpipe.views.SupjavLucBrowserResolver;
 import org.schabi.newpipe.diagnostics.DiagnosticLog;
 import org.schabi.newpipe.extractor.exceptions.ContentNotSupportedException;
 import org.schabi.newpipe.extractor.exceptions.ExtractionException;
@@ -213,6 +215,10 @@ public final class VideoDetailFragment
     int bottomSheetState = BottomSheetBehavior.STATE_EXPANDED;
     protected boolean autoPlayEnabled = true;
     private boolean supjavPlayAfterSelection = false;
+    @Nullable
+    private SupjavLucBrowserResolver lucBrowserResolver;
+    @Nullable
+    private String lucBrowserAttemptedUrl;
     SponsorBlockMode currentSponsorBlockMode = null;
 
     @Nullable
@@ -465,6 +471,10 @@ public final class VideoDetailFragment
 
     @Override
     public void onDestroyView() {
+        if (lucBrowserResolver != null) {
+            lucBrowserResolver.close();
+            lucBrowserResolver = null;
+        }
         moveThumbnailToContainer(binding.detailThumbnailContainer);
         super.onDestroyView();
         binding = null;
@@ -1085,42 +1095,110 @@ public final class VideoDetailFragment
                     }
                 }, throwable -> {
                     supjavPlayAfterSelection = false;
-                    showError(new ErrorInfo(throwable, UserAction.REQUESTED_STREAM,
-                            url == null ? "no url" : url, serviceId));
-                    if (serviceId == ServiceList.Supjav.getServiceId()
-                            && SupjavServerCatalog.selectedIndex(url) >= 0 && isAdded()) {
-                        DiagnosticLog.error("SUPJAV", "SELECTED_SERVER_FAILED", throwable,
-                                "serverIndex=" + SupjavServerCatalog.selectedIndex(url));
-                        // Preserve the selected line. A CDN rejection is not
-                        // a decoding error, and repeating the same 403 request
-                        // cannot make the current signed URL playable.
-                        Throwable rootCause = throwable;
-                        for (int depth = 0; depth < 8
-                                && rootCause.getCause() != null; depth++) {
-                            rootCause = rootCause.getCause();
-                        }
-                        final String details = rootCause.getMessage() == null
-                                ? "" : rootCause.getMessage();
-                        final boolean media403 = details.contains("get-referer=403")
-                                || details.contains("access refused (HTTP 403)");
-                        // Keep LUC and every selected Supjav server on Pipe's
-                        // existing detail/player surface. A blocked native source
-                        // must not silently open a second WebView player Activity.
-                        final String errorSummary = media403
-                                ? "The selected server refused native media requests (HTTP 403). "
-                                        + "This is not a video decoder failure. "
-                                        + "Choose another server or stay on this page."
-                                : "The selected source could not be resolved for Pipe's player. "
-                                        + "Choose another server or stay on this page.";
-                        new AlertDialog.Builder(requireContext())
-                                .setTitle("Supjav server unavailable")
-                                .setMessage(errorSummary)
-                                .setPositiveButton("Other servers",
-                                        (dialog, which) -> showSupjavServerPicker())
-                                .setNegativeButton(android.R.string.cancel, null)
-                                .show();
+                    if (startLucBrowserRecovery(throwable)) return;
+                    showSelectedServerError(throwable);
+                });;
+    }
+
+    /**
+     * Only a selected LUC line that failed during native extraction enters
+     * this one-shot recovery. It never opens a new activity or WebView player.
+     */
+    private boolean startLucBrowserRecovery(final Throwable failure) {
+        if (!isAdded() || serviceId != ServiceList.Supjav.getServiceId()
+                || SupjavServerCatalog.selectedIndex(url) < 0) return false;
+        Throwable deepest = failure;
+        for (int i = 0; i < 8 && deepest.getCause() != null; i++) {
+            deepest = deepest.getCause();
+        }
+        final String reason = deepest.getMessage() == null ? "" : deepest.getMessage();
+        if (!reason.contains("LUC") || url.equals(lucBrowserAttemptedUrl)) return false;
+        final String failedUrl = url;
+        lucBrowserAttemptedUrl = failedUrl;
+        DiagnosticLog.event("SUPJAV_LUC", "RECOVERY_REQUESTED",
+                "selectedIndex=" + SupjavServerCatalog.selectedIndex(failedUrl));
+        disposables.add(Single.fromCallable(() -> {
+                    final int index = SupjavServerCatalog.selectedIndex(failedUrl);
+                    final List<SupjavServerCatalog.Entry> list =
+                            SupjavServerCatalog.forPage(failedUrl);
+                    if (index < 0 || index >= list.size()
+                            || !"LUC".equalsIgnoreCase(list.get(index).provider)) {
+                        throw new IllegalStateException("Selected line is not LUC");
                     }
-                });
+                    return list.get(index);
+                })
+                .subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(entry -> {
+                    if (!isAdded() || !failedUrl.equals(url)) return;
+                    if (lucBrowserResolver != null) lucBrowserResolver.close();
+                    lucBrowserResolver = new SupjavLucBrowserResolver(
+                            requireActivity(), entry, new SupjavLucBrowserResolver.Listener() {
+                        @Override
+                        public void onVerified(final String media, final String referer,
+                                               final boolean includeOrigin) {
+                            lucBrowserResolver = null;
+                            if (!isAdded() || !failedUrl.equals(url)) return;
+                            if (!SupjavLucNativeCache.registerVerified(
+                                    entry, media, referer, includeOrigin)) {
+                                showSelectedServerError(failure);
+                                return;
+                            }
+                            DiagnosticLog.event("SUPJAV_LUC", "RECOVERY_NATIVE_READY",
+                                    "server=" + entry.index + " part=" + entry.part);
+                            supjavPlayAfterSelection = true;
+                            setAutoPlay(true);
+                            selectAndLoadVideo(ServiceList.Supjav.getServiceId(),
+                                    failedUrl, title, null);
+                        }
+
+                        @Override
+                        public void onUnavailable(final String reason) {
+                            lucBrowserResolver = null;
+                            if (!isAdded() || !failedUrl.equals(url)) return;
+                            DiagnosticLog.event("SUPJAV_LUC", "RECOVERY_FAILED", reason);
+                            showSelectedServerError(failure);
+                        }
+                    });
+                    lucBrowserResolver.start();
+                }, error -> {
+                    DiagnosticLog.error("SUPJAV_LUC", "RECOVERY_CATALOG_FAILED",
+                            error, "selected-LUC");
+                    if (isAdded() && failedUrl.equals(url)) {
+                        showSelectedServerError(failure);
+                    }
+                }));
+        return true;
+    }
+
+    private void showSelectedServerError(final Throwable throwable) {
+        showError(new ErrorInfo(throwable, UserAction.REQUESTED_STREAM,
+                url == null ? "no url" : url, serviceId));
+        if (serviceId != ServiceList.Supjav.getServiceId()
+                || SupjavServerCatalog.selectedIndex(url) < 0 || !isAdded()) return;
+        DiagnosticLog.error("SUPJAV", "SELECTED_SERVER_FAILED", throwable,
+                "serverIndex=" + SupjavServerCatalog.selectedIndex(url));
+        Throwable rootCause = throwable;
+        for (int depth = 0; depth < 8 && rootCause.getCause() != null; depth++) {
+            rootCause = rootCause.getCause();
+        }
+        final String details = rootCause.getMessage() == null
+                ? "" : rootCause.getMessage();
+        final boolean media403 = details.contains("get-referer=403")
+                || details.contains("access refused (HTTP 403)");
+        final String summary = media403
+                ? "The selected server refused native media requests (HTTP 403). "
+                        + "Browser source discovery was also unable to verify a "
+                        + "source for Pipe's native player. Try another server."
+                : "The selected source could not be resolved for Pipe's native player. "
+                        + "Choose another server or stay on this page.";
+        new AlertDialog.Builder(requireContext())
+                .setTitle("Supjav server unavailable")
+                .setMessage(summary)
+                .setPositiveButton("Other servers",
+                        (dialog, which) -> showSupjavServerPicker())
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
     }
 
     /*//////////////////////////////////////////////////////////////////////////
@@ -1616,6 +1694,12 @@ public final class VideoDetailFragment
                 "part=" + selected.part + " server=" + selected.provider
                         + " index=" + selected.index);
         final String target = SupjavServerCatalog.selectedUrl(detailUrl, selected.index);
+        if (lucBrowserResolver != null) {
+            lucBrowserResolver.close();
+            lucBrowserResolver = null;
+        }
+        // A manual re-selection is a fresh recovery attempt.
+        lucBrowserAttemptedUrl = null;
         if (target.equals(url) && currentInfo != null
                 && !currentInfo.getVideoStreams().isEmpty()) {
             openVideoPlayerAutoFullscreen();
