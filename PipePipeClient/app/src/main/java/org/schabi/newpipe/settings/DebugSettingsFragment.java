@@ -6,6 +6,8 @@ import android.os.Bundle;
 import androidx.preference.Preference;
 
 import org.schabi.newpipe.R;
+import org.schabi.newpipe.diagnostics.DiagnosticLog;
+import android.widget.Toast;
 import org.schabi.newpipe.error.ErrorInfo;
 import org.schabi.newpipe.error.ErrorUtil;
 import org.schabi.newpipe.error.UserAction;
@@ -21,6 +23,35 @@ public class DebugSettingsFragment extends BasePreferenceFragment {
     @Override
     public void onCreatePreferences(final Bundle savedInstanceState, final String rootKey) {
         addPreferencesFromResourceRegistry();
+
+        final Preference exportDiagnostics = findPreference("pipe_export_diagnostics");
+        final Preference clearDiagnostics = findPreference("pipe_clear_diagnostics");
+        if (exportDiagnostics != null) {
+            exportDiagnostics.setOnPreferenceClickListener(preference -> {
+                try {
+                    DiagnosticLog.share(requireContext());
+                } catch (final Exception error) {
+                    DiagnosticLog.error("DIAGNOSTICS", "EXPORT_FAILED", error, "share failed");
+                    Toast.makeText(requireContext(),
+                            "Could not export diagnostic ZIP", Toast.LENGTH_LONG).show();
+                }
+                return true;
+            });
+        }
+        if (clearDiagnostics != null) {
+            clearDiagnostics.setOnPreferenceClickListener(preference -> {
+                new androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                        .setTitle("Clear diagnostic history?")
+                        .setMessage("Remove the locally stored diagnostic events?")
+                        .setNegativeButton(android.R.string.cancel, null)
+                        .setPositiveButton("Clear", (dialog, which) -> {
+                            DiagnosticLog.clear(requireContext());
+                            Toast.makeText(requireContext(),
+                                    "Diagnostic history cleared", Toast.LENGTH_SHORT).show();
+                        }).show();
+                return true;
+            });
+        }
 
         final Preference allowHeapDumpingPreference =
                 findPreference(getString(R.string.allow_heap_dumping_key));
