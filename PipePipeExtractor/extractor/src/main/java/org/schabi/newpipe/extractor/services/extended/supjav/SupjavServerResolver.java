@@ -154,7 +154,10 @@ final class SupjavServerResolver {
                 probeDetails.add(check.status.name() + "(" + check.profiles + ")");
             }
             if (check.status == SupjavMediaProbe.Status.PLAYABLE) {
-                playable.add(candidate);
+                playable.add(luc
+                        ? SupjavProviderExtractor.withNativeOriginPolicy(
+                                candidate, check.includeOrigin)
+                        : candidate);
                 // The standalone app returns the first verified LUC source,
                 // preserving its declared hls2 > hls4 > hls3 priority.
                 // Unchecked/blocked variants must never displace it.
