@@ -35,15 +35,27 @@ import java.util.List;
  * Site-specific providers can later implement extra categories and filters.
  */
 public final class SiteBrowseCatalog {
+    public enum EntryType {
+        KIOSK, VIDEO_CATEGORY, SORT, FILTER
+    }
+
     public static final class Entry {
+        private final EntryType type;
         private final String id;
         private final String label;
         private final String url;
 
         public Entry(final String id, final String label, final String url) {
+            this.type = id.startsWith("category:") ? EntryType.VIDEO_CATEGORY
+                    : id.startsWith("sort:") ? EntryType.SORT
+                    : id.startsWith("filter:") ? EntryType.FILTER : EntryType.KIOSK;
             this.id = id;
             this.label = label;
             this.url = url;
+        }
+
+        public EntryType getType() {
+            return type;
         }
 
         public String getId() {
@@ -111,7 +123,10 @@ public final class SiteBrowseCatalog {
 
     public static synchronized void invalidateCategories(final StreamingService service) {
         CATEGORY_CACHE.remove(service.getServiceId());
-        PAGE_CACHE.clear();
+        synchronized (PAGE_CACHE) {
+            PAGE_CACHE.entrySet().removeIf(entry ->
+                    sameSite(service.getBaseUrl(), entry.getKey()));
+        }
     }
     private static final Map<Integer, CategoryCache> CATEGORY_CACHE = new HashMap<>();
     private static final Set<String> HTML_SITES = new HashSet<>(java.util.Arrays.asList(
