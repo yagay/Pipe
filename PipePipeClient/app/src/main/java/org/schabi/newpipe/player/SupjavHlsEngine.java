@@ -36,6 +36,7 @@ public final class SupjavHlsEngine {
         void onQuality(String label);
         void onQualityLevels(java.util.List<Integer> heights);
         void onReady();
+        void onBuffering();
         void onPlaying();
         void onEnded();
         void onFailure(String reason);
@@ -318,9 +319,16 @@ public final class SupjavHlsEngine {
                     fail(state.substring(6));
                 } else if ("SCRIPT_FAILED".equals(state)) {
                     fail("hls-library-load-failed");
+                } else if ("WAITING".equals(state) || "STALLED".equals(state)) {
+                    DiagnosticLog.event("SUPJAV_ENGINE", "VIDEO_BUFFERING",
+                            "state=" + state);
+                    listener.onBuffering();
+                } else if ("AUTOPLAY_RESTRICTED".equals(state)) {
+                    DiagnosticLog.event("SUPJAV_ENGINE", "AUTOPLAY_RESTRICTED",
+                            "manual play is available in the Pipe controls");
+                    listener.onStatus("点击播放按钮继续");
                 } else if ("BOOTSTRAP".equals(state) || "SCRIPT_LOADED".equals(state)
-                        || "MANIFEST_PARSED".equals(state) || "WAITING".equals(state)
-                        || "STALLED".equals(state) || "AUTOPLAY_RESTRICTED".equals(state)
+                        || "MANIFEST_PARSED".equals(state)
                         || state.startsWith("METADATA:")
                         || state.startsWith("FIRST_FRAME:")) {
                     DiagnosticLog.event("SUPJAV_ENGINE", "WEB_STATE",
@@ -387,7 +395,9 @@ public final class SupjavHlsEngine {
     }
 
     public void command(final String safeCommand) {
-        if (player != null && ready && safeCommand.matches(
+        final boolean manualPlay = "play()".equals(safeCommand)
+                || "toggle()".equals(safeCommand);
+        if (player != null && (ready || manualPlay) && safeCommand.matches(
                 "(?:toggle\\(\\)|play\\(\\)|pause\\(\\)|cycleQuality\\(\\)|quality\\(-?[0-9]+\\)|seek\\(-?[0-9]+\\)|seekFraction\\([0-9.]+\\)|speed\\([0-9.]+\\))")) {
             player.evaluateJavascript("(function(){if(window.PipeHls)window.PipeHls."
                     + safeCommand + ";})()", null);
