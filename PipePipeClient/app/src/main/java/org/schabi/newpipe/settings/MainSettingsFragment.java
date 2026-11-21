@@ -30,11 +30,7 @@ public class MainSettingsFragment extends BasePreferenceFragment {
 //            defaultPreferences.edit().putBoolean(getString(R.string.update_app_key), false).apply();
 //        }
 
-        // Diagnostics and export must also be available in signed/release builds.
-        if (false && !DEBUG) {
-            getPreferenceScreen().removePreference(
-                    findPreference(getString(R.string.debug_pref_screen_key)));
-        }
+        // Keep diagnostic export accessible in release builds as well.
     }
 
     @Override
