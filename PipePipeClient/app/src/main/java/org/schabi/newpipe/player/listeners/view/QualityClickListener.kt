@@ -29,13 +29,8 @@ class QualityClickListener(
         qualityPopupMenu.show()
         player.isSomePopupMenuVisible = true
 
-        val videoStream = player.selectedVideoStream
-        if (videoStream != null) {
-            player.binding.qualityTextView.text =
-                videoStream.codec.uppercase(Locale.getDefault()).split("\\.".toRegex())
-                    .toTypedArray()[0] + " " + videoStream.resolution
-        }
-
+        // The Player owns the quality label. In particular, do not replace
+        // adaptive Media3 track labels with the extractor's placeholder "Auto".
         player.saveWasPlaying()
         player.manageControlsAfterOnClick(v)
     }
