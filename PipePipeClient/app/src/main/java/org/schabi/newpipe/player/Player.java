@@ -698,6 +698,7 @@ public final class Player implements
                                 .show();
                     }
                 });
+        supjavHlsEngine.setGestureListener(playerGestureListener);
         notifyQueueUpdateToListeners();
         // The PlayerHolder listener is installed only after service connection
         // returns. Deliver the queue again once it has been attached.
@@ -6056,10 +6057,12 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
     }
 
     public long getCurrentPosition() {
+        if (supjavHlsEngine != null) return supjavHlsPositionMs;
         return exoPlayerIsNull() ? 0 : simpleExoPlayer.getCurrentPosition();
     }
 
     public long getDuration() {
+        if (supjavHlsEngine != null) return supjavHlsDurationMs;
         return exoPlayerIsNull() ? 0 : simpleExoPlayer.getDuration();
     }
 
