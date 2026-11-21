@@ -30,6 +30,12 @@ import java.util.Map;
  * Neither Media3's HTTP client nor a synthetic proxy touches signed HLS URLs.
  */
 public final class SupjavHlsEngine {
+    // Keep the same network identity as yagay/supjav's working EmbeddedHlsPlayer.
+    // Its browser-hosted player is validated with this mobile Chrome UA.
+    private static final String SUPJAV_USER_AGENT =
+            "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 "
+                    + "(KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36";
+
     public interface Listener {
         void onStatus(String status);
         void onPosition(long positionMs, long durationMs, boolean paused);
@@ -101,6 +107,7 @@ public final class SupjavHlsEngine {
         final WebSettings settings = resolver.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
+        settings.setUserAgentString(SUPJAV_USER_AGENT);
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(false);
@@ -254,12 +261,12 @@ public final class SupjavHlsEngine {
         final WebSettings settings = player.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
+        settings.setUserAgentString(SUPJAV_USER_AGENT);
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        if (resolver != null) settings.setUserAgentString(
-                resolver.getSettings().getUserAgentString());
+
         CookieManager.getInstance().setAcceptThirdPartyCookies(player, true);
         final WebView playingView = player;
         if (gestureListener != null) player.setOnTouchListener(gestureListener);
