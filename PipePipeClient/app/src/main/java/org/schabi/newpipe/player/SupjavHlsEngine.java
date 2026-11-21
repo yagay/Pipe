@@ -121,6 +121,23 @@ public final class SupjavHlsEngine {
             }
 
             @Override
+            public boolean shouldOverrideUrlLoading(final WebView view,
+                                                    final WebResourceRequest request) {
+                final Uri destination = request.getUrl();
+                final String scheme = destination.getScheme();
+                if (!"https".equalsIgnoreCase(scheme)
+                        && !"about".equalsIgnoreCase(scheme)) return true;
+                if (request.isForMainFrame()) {
+                    final String host = destination.getHost();
+                    final String domain = host == null ? ""
+                            : host.toLowerCase(Locale.ROOT);
+                    return !("supjav.com".equals(domain)
+                            || "www.supjav.com".equals(domain));
+                }
+                return false;
+            }
+
+            @Override
             public void onReceivedHttpError(final WebView view,
                                             final WebResourceRequest request,
                                             final WebResourceResponse response) {
