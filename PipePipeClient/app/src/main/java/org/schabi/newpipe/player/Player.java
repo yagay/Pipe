@@ -3854,10 +3854,35 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
         NotificationUtil.getInstance().createNotificationIfNeededAndUpdate(this, false);
     }
 
+    /**
+     * Keep video visible behind the queue/chapters drawer. Adapt its size to the
+     * actual player surface instead of using fullscreen match_parent.
+     */
+    private void sizeItemsListPanel() {
+        final float density = context.getResources().getDisplayMetrics().density;
+        final int width = binding.getRoot().getWidth() > 0
+                ? binding.getRoot().getWidth()
+                : context.getResources().getDisplayMetrics().widthPixels;
+        final int height = binding.getRoot().getHeight() > 0
+                ? binding.getRoot().getHeight()
+                : context.getResources().getDisplayMetrics().heightPixels;
+        final boolean landscape = width > height;
+        final int panelWidth = Math.min((int) (landscape ? 380 * density : 340 * density),
+                (int) (width * (landscape ? 0.46f : 0.88f)));
+        final int panelHeight = (int) (height * (landscape ? 0.90f : 0.72f));
+        final android.widget.RelativeLayout.LayoutParams params =
+                new android.widget.RelativeLayout.LayoutParams(
+                        Math.max(1, panelWidth), Math.max(1, panelHeight));
+        params.addRule(android.widget.RelativeLayout.ALIGN_PARENT_END);
+        params.addRule(android.widget.RelativeLayout.ALIGN_PARENT_BOTTOM);
+        binding.itemsListPanel.setLayoutParams(params);
+    }
+
     private void onQueueClicked() {
         isQueueVisible = true;
 
         hideSystemUIIfNeeded();
+        sizeItemsListPanel();
         buildQueue();
 
         binding.itemsListHeaderTitle.setVisibility(View.GONE);
@@ -3872,6 +3897,13 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
                 AnimationType.SLIDE_AND_ALPHA);
 
         binding.itemsList.scrollToPosition(playQueue.getIndex());
+
+        // A short first page may not scroll enough to trip the bottom listener.
+        // Prime the next page so the queue can keep growing from its source.
+        if (playQueue != null && !playQueue.isComplete()
+                && playQueue.getStreams().size() < 12) {
+            playQueue.fetch();
+        }
 
         updateQueueTime((int) simpleExoPlayer.getCurrentPosition());
     }
@@ -3896,6 +3928,7 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
         areSegmentsVisible = true;
 
         hideSystemUIIfNeeded();
+        sizeItemsListPanel();
         buildSegments();
 
         binding.itemsListHeaderTitle.setVisibility(View.VISIBLE);
