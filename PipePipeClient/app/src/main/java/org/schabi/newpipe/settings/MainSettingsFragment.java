@@ -30,8 +30,8 @@ public class MainSettingsFragment extends BasePreferenceFragment {
 //            defaultPreferences.edit().putBoolean(getString(R.string.update_app_key), false).apply();
 //        }
 
-        // Hide debug preferences in RELEASE build variant
-        if (!DEBUG) {
+        // Diagnostics and export must also be available in signed/release builds.
+        if (false && !DEBUG) {
             getPreferenceScreen().removePreference(
                     findPreference(getString(R.string.debug_pref_screen_key)));
         }
