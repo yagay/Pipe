@@ -471,6 +471,7 @@ public final class DownloaderImpl extends Downloader {
         call.enqueue(new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
+                DiagnosticLog.error("NETWORK", "ASYNC_REQUEST_FAILED", e, "async HTTP request");
                 cancellableCall.setFinished();
                 callback.onError(e);
             }
@@ -478,6 +479,10 @@ public final class DownloaderImpl extends Downloader {
             @Override
             public void onResponse(Call call, okhttp3.Response response) throws IOException {
                 try {
+                    if (response.code() >= 400) {
+                        DiagnosticLog.event("NETWORK", "ASYNC_HTTP_" + response.code(),
+                                "async HTTP response");
+                    }
                     if (response.code() == 429) {
                         callback.onError(new ReCaptchaException("reCaptcha Challenge requested", url));
                         return;
