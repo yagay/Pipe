@@ -618,7 +618,15 @@ public final class Player implements
 
         binding.getRoot().setVisibility(View.VISIBLE);
         binding.supjavHlsSurface.setVisibility(View.VISIBLE);
+        // Keep the original Pipe spinner, but do not put a full-screen black
+        // view over browser video during a slow first 1080p fragment.
+        // The controls must remain touchable while HLS is buffering.
+        binding.loadingPanel.setBackgroundColor(android.graphics.Color.TRANSPARENT);
+        binding.loadingPanel.setVisibility(View.VISIBLE);
+        binding.loadingPanelWrapper.setClickable(false);
+        binding.loadingPanel.setClickable(false);
         binding.loadingPanelWrapper.setVisibility(View.VISIBLE);
+        binding.playbackControlRoot.setVisibility(View.VISIBLE);
         binding.surfaceView.setVisibility(View.GONE);
         binding.playbackSeekBar.setMax(1000);
         binding.playbackSeekBar.setProgress(0);
@@ -639,6 +647,11 @@ public final class Player implements
                 new SupjavHlsEngine.Listener() {
                     @Override public void onStatus(final String status) {
                         DiagnosticLog.event("SUPJAV_ENGINE", "STATUS", "state=" + status);
+                        if ("点击播放按钮继续".equals(status) && binding != null) {
+                            binding.playbackControlRoot.setVisibility(View.VISIBLE);
+                            binding.loadingPanelWrapper.setVisibility(View.GONE);
+                            binding.playPauseButton.setImageResource(R.drawable.ic_play_arrow);
+                        }
                     }
                     @Override public void onPosition(final long position,
                             final long duration, final boolean paused) {
@@ -1028,6 +1041,8 @@ public final class Player implements
             binding.supjavSourceControls.setVisibility(View.GONE);
             binding.supjavCdButtons.removeAllViews();
             binding.loadingPanelWrapper.setVisibility(View.GONE);
+            binding.loadingPanel.setBackgroundColor(android.graphics.Color.BLACK);
+            binding.loadingPanel.setVisibility(View.GONE);
             binding.surfaceView.setVisibility(View.VISIBLE);
             setupScreenRotationButton();
         }
