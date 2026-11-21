@@ -90,6 +90,30 @@ final class SupjavProviderExtractor {
         }
     }
 
+    /**
+     * VOE sometimes forwards a selected player document through a simple
+     * location assignment. This is a document navigation, not a media URL.
+     * Follow only HTTPS player/embed routes from the selected provider page.
+     */
+    static List<String> declaredPlayerRedirects(final Document page,
+                                               final SupjavServerCatalog.Entry server) {
+        if (!"VOE".equals(server.provider)) return Collections.emptyList();
+        final List<String> urls = new ArrayList<>();
+        final java.util.regex.Pattern redirect = java.util.regex.Pattern.compile(
+                "(?i)window\\.location(?:\\.href)?\\s*=\\s*[\\\"']"
+                + "(https://[^\\\"'<>\\s]{8,2048})[\\\"']");
+        for (final Element script : page.select("script:not([src])")) {
+            final String content = script.data().isEmpty() ? script.html() : script.data();
+            final java.util.regex.Matcher matcher = redirect.matcher(content);
+            while (matcher.find() && urls.size() < 3) {
+                final String url = matcher.group(1);
+                if (safePublicHttps(url) && !urls.contains(url)) urls.add(url);
+            }
+            if (urls.size() >= 3) break;
+        }
+        return urls;
+    }
+
     private static void addVoeDeclared(final Map<String, VideoStream> out,
                                        final Document page, final String label) {
         // VOE publishes the stream in a ROT13 + Base64 JSON declaration.
