@@ -1105,4 +1105,5 @@
 <string name="use_dns_over_https_fallback_title">Use DNS over HTTPS fallback</string>
 <string name="use_dns_over_https_fallback_summary">Retry failed system DNS lookups using Cloudflare DNS over HTTPS. Changing this will restart the app.</string>
 <string name="youtube_player_client_title">YouTube extraction endpoint</string>
+    <string name="play_queue_drag_handle">Reorder video in play queue</string>
 </resources>
