@@ -571,6 +571,8 @@ public final class Player implements
                             final long duration, final boolean paused) {
                         supjavHlsDurationMs = duration;
                         supjavHlsPaused = paused;
+                        binding.playPauseButton.setImageResource(
+                                paused ? R.drawable.ic_play_arrow : R.drawable.ic_pause);
                         binding.playbackSeekBar.setProgress(duration > 0
                                 ? (int) Math.min(1000, position * 1000L / duration) : 0);
                         binding.playbackCurrentTime.setText(
