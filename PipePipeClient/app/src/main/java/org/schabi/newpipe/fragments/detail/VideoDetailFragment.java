@@ -1633,7 +1633,14 @@ public final class VideoDetailFragment
         if (bottomSheetBehavior != null) {
             bottomSheetBehavior.setState(BottomSheetBehavior.STATE_EXPANDED);
         }
-        player.startSupjavHls(selectedUrl);
+        // Reuse the current Pipe list when it actually contains this video.
+        // Otherwise construct a one-item queue from the displayed StreamInfo;
+        // never pass a stale Media3 queue from a different video.
+        final PlayQueue sourceQueue = playQueue != null && playQueue.getItem() != null
+                && SupjavServerCatalog.pageUrl(playQueue.getItem().getUrl())
+                        .equals(SupjavServerCatalog.pageUrl(selectedUrl))
+                ? playQueue : null;
+        player.startSupjavHls(selectedUrl, sourceQueue, currentInfo);
     }
 
     private void showSupjavServerPicker() {
