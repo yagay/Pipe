@@ -6,6 +6,10 @@ on:
       - 'PipePipeClient/**'
       - 'PipePipeExtractor/**'
   workflow_dispatch:
+concurrency:
+  group: android-debug-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 jobs:
@@ -37,6 +41,14 @@ jobs:
           "$SDKMGR" --sdk_root="$SDK_ROOT" --channel=3 --install "platforms;android-37.0" "build-tools;36.0.0" "platform-tools"
       - name: Cache Gradle
         uses: gradle/actions/setup-gradle@v4
+      - name: Verify native browse routing (offline tests)
+        working-directory: PipePipeExtractor
+        run: |
+          chmod +x gradlew
+          ./gradlew :extractor:test \
+            --tests org.schabi.newpipe.extractor.kiosk.BrowseUrlStateTest \
+            --tests org.schabi.newpipe.extractor.kiosk.SiteBrowseCatalogRoutingTest \
+            --no-daemon --max-workers=2 --stacktrace
       - name: Build Debug APK
         working-directory: PipePipeClient
         run: |
@@ -58,4 +70,6 @@ jobs:
           path: |
             PipePipeClient/app/build/reports/**
             PipePipeClient/build/reports/**
+            PipePipeExtractor/extractor/build/test-results/**
+            PipePipeExtractor/extractor/build/reports/tests/**
           if-no-files-found: ignore
