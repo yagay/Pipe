@@ -311,6 +311,9 @@ public final class Player implements
     //////////////////////////////////////////////////////////////////////////*/
 
     private PlayerBinding binding;
+    @Nullable private SupjavHlsEngine supjavHlsEngine;
+    private boolean supjavHlsPaused = true;
+    private long supjavHlsDurationMs;
 
     private final Handler controlsVisibilityHandler = new Handler();
 
@@ -534,6 +537,80 @@ public final class Player implements
     // Setup and initialization
     //////////////////////////////////////////////////////////////////////////*/
     //region Setup and initialization
+
+    /** Use the existing Pipe player view and controls for browser-only Supjav HLS.
+     * No second Activity or player controls are constructed. */
+    public void startSupjavHls(final String selectedUrl) {
+        if (binding == null) return;
+        final int selected = org.schabi.newpipe.extractor.services.extended.supjav
+                .SupjavServerCatalog.selectedIndex(selectedUrl);
+        if (selected < 0) return;
+        stopSupjavHls();
+        if (simpleExoPlayer != null) simpleExoPlayer.pause();
+        binding.getRoot().setVisibility(View.VISIBLE);
+        binding.supjavHlsSurface.setVisibility(View.VISIBLE);
+        binding.playbackControlRoot.setVisibility(View.VISIBLE);
+        binding.playerOverlays.setVisibility(View.GONE);
+        binding.surfaceView.setVisibility(View.GONE);
+        binding.playbackSeekBar.setMax(1000);
+        binding.playbackSeekBar.setProgress(0);
+        binding.playbackCurrentTime.setText("0:00");
+        binding.playbackEndTime.setText("0:00");
+        binding.titleTextView.setText("Supjav");
+        binding.playPreviousButton.setVisibility(View.INVISIBLE);
+        binding.playNextButton.setVisibility(View.INVISIBLE);
+        binding.queueButton.setVisibility(View.GONE);
+        supjavHlsEngine = new SupjavHlsEngine(binding.supjavHlsSurface,
+                new SupjavHlsEngine.Listener() {
+                    @Override public void onStatus(final String status) {
+                        DiagnosticLog.event("SUPJAV_ENGINE", "STATUS", "state=" + status);
+                    }
+                    @Override public void onPosition(final long position,
+                            final long duration, final boolean paused) {
+                        supjavHlsDurationMs = duration;
+                        supjavHlsPaused = paused;
+                        binding.playbackSeekBar.setProgress(duration > 0
+                                ? (int) Math.min(1000, position * 1000L / duration) : 0);
+                        binding.playbackCurrentTime.setText(
+                                String.format(java.util.Locale.ROOT, "%d:%02d",
+                                        position / 60000, position / 1000 % 60));
+                        binding.playbackEndTime.setText(
+                                String.format(java.util.Locale.ROOT, "%d:%02d",
+                                        duration / 60000, duration / 1000 % 60));
+                    }
+                    @Override public void onQuality(final String label) {
+                        binding.qualityTextView.setText(label);
+                    }
+                    @Override public void onPlaying() {
+                        supjavHlsPaused = false;
+                        binding.playbackControlRoot.setVisibility(View.VISIBLE);
+                    }
+                    @Override public void onFailure(final String reason) {
+                        DiagnosticLog.event("SUPJAV_ENGINE", "UNAVAILABLE", "reason=" + reason);
+                        android.widget.Toast.makeText(context,
+                                "This server cannot play in Pipe", android.widget.Toast.LENGTH_LONG)
+                                .show();
+                    }
+                });
+        supjavHlsEngine.open(selectedUrl, selected);
+        DiagnosticLog.event("SUPJAV", "PLAYER_BINDING_START", "index=" + selected);
+    }
+
+    public boolean isSupjavHlsActive() {
+        return supjavHlsEngine != null;
+    }
+
+    public void stopSupjavHls() {
+        if (supjavHlsEngine == null) return;
+        supjavHlsEngine.close();
+        supjavHlsEngine = null;
+        supjavHlsDurationMs = 0;
+        supjavHlsPaused = true;
+        if (binding != null) {
+            binding.supjavHlsSurface.setVisibility(View.GONE);
+            binding.surfaceView.setVisibility(View.VISIBLE);
+        }
+    }
 
     public void setupFromView(@NonNull final PlayerBinding playerBinding) {
         initViews(playerBinding);
@@ -1020,6 +1097,7 @@ public final class Player implements
     //region Destroy and recovery
 
     private void destroyPlayer() {
+        stopSupjavHls();
         if (DEBUG) {
             Log.d(TAG, "destroyPlayer() called");
         }
@@ -2102,6 +2180,7 @@ public final class Player implements
     @Override // seekbar listener
     public void onProgressChanged(final SeekBar seekBar, final int progress,
                                   final boolean fromUser) {
+        if (supjavHlsEngine != null) return;
         // Currently we don't need method execution when fromUser is false
         if (!fromUser) {
             return;
@@ -2171,6 +2250,7 @@ public final class Player implements
 
     @Override // seekbar listener
     public void onStartTrackingTouch(final SeekBar seekBar) {
+        if (supjavHlsEngine != null) return;
         if (DEBUG) {
             Log.d(TAG, "onStartTrackingTouch() called with: seekBar = [" + seekBar + "]");
         }
@@ -2192,6 +2272,11 @@ public final class Player implements
 
     @Override // seekbar listener
     public void onStopTrackingTouch(final SeekBar seekBar) {
+        if (supjavHlsEngine != null) {
+            supjavHlsEngine.command("seekFraction("
+                    + (seekBar.getProgress() / (float) Math.max(1, seekBar.getMax())) + ")");
+            return;
+        }
         if (DEBUG) {
             Log.d(TAG, "onStopTrackingTouch() called with: seekBar = [" + seekBar + "]");
         }
@@ -4672,6 +4757,19 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
 
     @Override
     public void onClick(final View v) {
+        if (supjavHlsEngine != null) {
+            if (v.getId() == binding.playPauseButton.getId()) {
+                supjavHlsEngine.command("toggle()");
+            } else if (v.getId() == binding.playerCloseButton.getId()) {
+                stopSupjavHls();
+                context.sendBroadcast(new Intent(VideoDetailFragment.ACTION_HIDE_MAIN_PLAYER));
+            } else if (v.getId() == binding.qualityTextView.getId()) {
+                supjavHlsEngine.command("cycleQuality()");
+            } else if (v.getId() == binding.screenRotationButton.getId()) {
+                onScreenRotationButtonClicked();
+            }
+            return;
+        }
         if (DEBUG) {
             Log.d(TAG, "onClick() called with: v = [" + v + "]");
         }
