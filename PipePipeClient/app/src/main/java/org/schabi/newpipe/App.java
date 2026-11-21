@@ -18,6 +18,7 @@ import com.jakewharton.processphoenix.ProcessPhoenix;
 import org.acra.ACRA;
 import org.acra.config.CoreConfigurationBuilder;
 import org.schabi.newpipe.error.ReCaptchaActivity;
+import org.schabi.newpipe.diagnostics.DiagnosticLog;
 import org.schabi.newpipe.extractor.NewPipe;
 import org.schabi.newpipe.extractor.downloader.Downloader;
 import org.schabi.newpipe.extractor.services.youtube.YoutubeApiDecoder;
@@ -81,6 +82,7 @@ public class App extends MultiDexApplication {
         EdgeToEdgeWorkaround.apply();
 
         app = this;
+        DiagnosticLog.install(this);
 
         if (ProcessPhoenix.isPhoenixProcess(this)) {
             Log.i(TAG, "This is a phoenix process! "
@@ -161,6 +163,7 @@ public class App extends MultiDexApplication {
         RxJavaPlugins.setErrorHandler(new Consumer<Throwable>() {
             @Override
             public void accept(@NonNull final Throwable throwable) {
+                DiagnosticLog.error("RX", "UNDELIVERABLE", throwable, "RxJava error handler");
                 Log.e(TAG, "RxJavaPlugins.ErrorHandler called with -> : "
                         + "throwable = [" + throwable.getClass().getName() + "]");
 
