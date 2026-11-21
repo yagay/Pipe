@@ -188,12 +188,13 @@ public class KioskFragment extends BaseListInfoFragment<StreamInfoItem, KioskInf
         // which its own extractor has already registered as native kiosks.
         try {
             siteBrowseHeader = new SiteBrowseHeader(rootView,
-                    SiteBrowseCatalog.getEntries(currentService), currentService, kioskId,
+                    SiteBrowseCatalog.getEntries(currentService), currentService, url, kioskId,
                     entry -> {
                         if (entry.getId().equals(kioskId)) {
                             return;
                         }
-                        if (entry.getId().startsWith("category:")) {
+                        if (entry.getId().startsWith("category:")
+                                || entry.getId().startsWith("sort:")) {
                             NavigationHelper.openSiteCategoryFragment(getFM(), serviceId,
                                     entry.getUrl(), entry.getLabel());
                             return;
