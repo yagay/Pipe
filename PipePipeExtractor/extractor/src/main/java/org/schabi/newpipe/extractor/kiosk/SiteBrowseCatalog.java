@@ -237,7 +237,9 @@ public final class SiteBrowseCatalog {
                     : uri.getHost().toLowerCase(Locale.ROOT).replaceFirst("^www\\.", "");
             // Country-specific subdomain aliases are permitted for Pornhub.
             return host.equals(other)
-                    || (host.endsWith("pornhub.com") && other.matches("(?:[a-z]{2}|www)\\.pornhub\\.com"));
+                    || ((host.equals("pornhub.com") || host.endsWith(".pornhub.com"))
+                        && (other.equals("pornhub.com")
+                            || other.matches("[a-z]{2}\\.pornhub\\.com")));
         } catch (final URISyntaxException | NullPointerException ignored) {
             return false;
         }
