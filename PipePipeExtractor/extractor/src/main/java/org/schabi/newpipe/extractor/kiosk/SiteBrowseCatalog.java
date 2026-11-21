@@ -128,7 +128,8 @@ public final class SiteBrowseCatalog {
                     sameSite(service.getBaseUrl(), entry.getKey()));
         }
     }
-    private static final Map<Integer, CategoryCache> CATEGORY_CACHE = new HashMap<>();
+    private static final Map<Integer, CategoryCache> CATEGORY_CACHE =
+            new java.util.concurrent.ConcurrentHashMap<>();
     private static final java.util.concurrent.ConcurrentHashMap<Integer, Object> CATEGORY_LOCKS =
             new java.util.concurrent.ConcurrentHashMap<>();
     private static final Set<String> HTML_SITES = new HashSet<>(java.util.Arrays.asList(
