@@ -174,7 +174,7 @@ final class SupjavServerResolver {
                     + "; candidates=" + candidates.size()
                     + "; checks=" + String.join(", ", probeDetails));
         }
-        return playable;
+        return SupjavQualityResolver.annotate(playable);
     }
 
     private static boolean challenge(final Document doc) {
