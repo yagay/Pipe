@@ -150,6 +150,34 @@ final class SiteBrowseHeader {
                 .setNegativeButton(android.R.string.cancel, null).show();
     }
 
+    /**
+     * Supjav taxonomy drill-down: category type -> website-defined choice -> listing.
+     * The original sources remain on their existing flat menu.
+     */
+    private void showSupjavCategoryGroups() {
+        final String[] kinds = {"Category", "Tag", "Cast", "Maker"};
+        new AlertDialog.Builder(root.getContext())
+                .setTitle("Browse Supjav")
+                .setItems(kinds, (dialog, index) -> {
+                    final java.util.List<SiteBrowseCatalog.Entry> group =
+                            new java.util.ArrayList<>();
+                    final String prefix = kinds[index] + " / ";
+                    for (final SiteBrowseCatalog.Entry item : categories) {
+                        if (item.getLabel().startsWith(prefix)) {
+                            group.add(item);
+                        }
+                    }
+                    if (group.isEmpty()) {
+                        new AlertDialog.Builder(root.getContext())
+                                .setMessage("No entries available for " + kinds[index])
+                                .setPositiveButton(android.R.string.ok, null).show();
+                    } else {
+                        showOptions(kinds[index], group);
+                    }
+                })
+                .setNegativeButton(android.R.string.cancel, null).show();
+    }
+
     private void renderCategories() {
         categoriesToolbar.removeAllViews();
         if (!categories.isEmpty()) {
@@ -175,7 +203,11 @@ final class SiteBrowseHeader {
             root.findViewById(R.id.site_browse_container).setVisibility(View.VISIBLE);
             choose.setOnClickListener(v -> {
                 if (!categories.isEmpty()) {
-                    showOptions("Categories", categories);
+                    if ("Supjav".equals(service.getServiceInfo().getName())) {
+                        showSupjavCategoryGroups();
+                    } else {
+                        showOptions("Categories", categories);
+                    }
                 }
             });
         }
