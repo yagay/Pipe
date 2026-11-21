@@ -160,9 +160,12 @@ final class SiteBrowseHeader {
                 }
             }
             choose.setText(selectedName);
+            choose.setSingleLine(true);
+            choose.setEllipsize(android.text.TextUtils.TruncateAt.END);
             choose.setTypeface(null, Typeface.BOLD);
             choose.setClickable(true);
-            categoriesToolbar.addView(choose);
+            categoriesToolbar.addView(choose, new LinearLayout.LayoutParams(
+                    0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
             categoriesToolbar.setVisibility(View.VISIBLE);
             root.findViewById(R.id.site_browse_container).setVisibility(View.VISIBLE);
             choose.setOnClickListener(v -> {
@@ -197,8 +200,11 @@ final class SiteBrowseHeader {
             categoriesToolbar.addView(filterButton);
             filterButton.setOnClickListener(v -> showOptions("Filter", filters));
         }
-        if (categories.isEmpty() && sorts.isEmpty() && filters.isEmpty() && !categoryFailed) {
-            categoriesToolbar.setVisibility(View.GONE);
+        final boolean hasOptions = !categories.isEmpty() || !sorts.isEmpty()
+                || !filters.isEmpty() || categoryFailed;
+        categoriesToolbar.setVisibility(hasOptions ? View.VISIBLE : View.GONE);
+        if (hasOptions) {
+            root.findViewById(R.id.site_browse_container).setVisibility(View.VISIBLE);
         }
     }
 
