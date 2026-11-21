@@ -1608,11 +1608,21 @@ public final class VideoDetailFragment
 
     private void navigateToSupjavServer(final String detailUrl,
                                         final SupjavServerCatalog.Entry selected) {
+        navigateToSupjavServer(detailUrl, selected, null);
+    }
+
+    private void navigateToSupjavServer(final String detailUrl,
+                                        final SupjavServerCatalog.Entry selected,
+                                        @Nullable final String originalPart) {
         DiagnosticLog.event("SUPJAV", "SERVER_SELECTED",
                 "part=" + selected.part + " server=" + selected.provider
                         + " index=" + selected.index);
         final String target = SupjavServerCatalog.selectedUrl(detailUrl, selected.index);
-        final String previousPart = supjavSelectedPart;
+        // Use the exact CD selected in the dialog rather than state from an
+        // earlier video. A server-picker switch stays within that CD; a
+        // CD-picker switch must reset the timeline to the new disc.
+        final String previousPart = originalPart != null
+                ? originalPart : supjavSelectedPart;
         supjavSelectedPart = selected.part;
         supjavSelectedPartPage = SupjavServerCatalog.pageUrl(detailUrl);
         if (target.equals(url) && currentInfo != null
@@ -1694,7 +1704,8 @@ public final class VideoDetailFragment
                                                 SupjavServerCatalog.preferredForPart(
                                                         entries, requested, provider);
                                         if (target != null) {
-                                            navigateToSupjavServer(detailUrl, target);
+                                            navigateToSupjavServer(detailUrl, target,
+                                                    activePart);
                                         }
                                     })
                             .setNegativeButton(android.R.string.cancel, null)
@@ -1740,7 +1751,8 @@ public final class VideoDetailFragment
                             .setSingleChoiceItems(names, checked,
                                     (dialog, position) -> {
                                         dialog.dismiss();
-                                        navigateToSupjavServer(detailUrl, servers.get(position));
+                                        navigateToSupjavServer(detailUrl,
+                                                servers.get(position), part);
                                     })
                             .setNegativeButton(android.R.string.cancel, null)
                             .show();
