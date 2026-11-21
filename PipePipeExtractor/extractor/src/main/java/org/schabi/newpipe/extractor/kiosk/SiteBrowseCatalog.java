@@ -339,6 +339,46 @@ public final class SiteBrowseCatalog {
         return Collections.unmodifiableList(new ArrayList<>(options.values()));
     }
 
+    /** Optional filters are only displayed if the current site renders working links. */
+    public static List<Entry> getWebsiteFilters(final StreamingService service,
+                                                final String pageUrl)
+            throws IOException, ExtractionException {
+        if (!isWebsiteBrowseUrl(service, pageUrl)) {
+            return Collections.emptyList();
+        }
+        final Document page = fetchSitePage(service, pageUrl);
+        final Map<String, Entry> found = new LinkedHashMap<>();
+        final URI current;
+        try {
+            current = new URI(pageUrl);
+        } catch (final URISyntaxException ignored) {
+            return Collections.emptyList();
+        }
+        for (final Element a : page.select("a[href]")) {
+            final String target = a.absUrl("href");
+            final String label = a.text().replaceAll("\\s+", " ").trim();
+            if (label.isEmpty() || label.length() > 40
+                    || !sameSite(service.getBaseUrl(), target)) {
+                continue;
+            }
+            try {
+                final URI candidate = new URI(target);
+                if (!current.getPath().equals(candidate.getPath())
+                        || candidate.getRawQuery() == null) {
+                    continue;
+                }
+                final String query = candidate.getRawQuery();
+                if (!query.matches("(?i)(?:^|.*&)(?:filter|filters|duration|quality|hd|type|orientation|production)=[^&]+(?:&.*)?")) {
+                    continue;
+                }
+                found.putIfAbsent(target, new Entry("filter:" + target, label, target));
+            } catch (final URISyntaxException ignored) {
+                // Drop malformed filter links.
+            }
+        }
+        return Collections.unmodifiableList(new ArrayList<>(found.values()));
+    }
+
     private static int order(final String id) {
         if ("latest".equalsIgnoreCase(id)) {
             return 0;
