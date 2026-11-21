@@ -1,309 +1,164 @@
 package org.schabi.newpipe.extractor.services.extended.supjav;
 
+import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
-import org.schabi.newpipe.extractor.MediaFormat;
 import org.schabi.newpipe.extractor.NewPipe;
 import org.schabi.newpipe.extractor.downloader.Response;
-import org.schabi.newpipe.extractor.stream.DeliveryMethod;
+import org.schabi.newpipe.extractor.exceptions.ParsingException;
 import org.schabi.newpipe.extractor.stream.VideoStream;
 
+import java.io.IOException;
 import java.net.URI;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
- * Supjav line adapter. Uses only the selected site's declared player links,
- * not arbitrary ad iframes or untrusted URLs from surrounding markup.
- * JavaScript-only / browser-dependent hosts require a separate fallback.
+ * Selected-line-only navigation; no fan-out to other CDs or servers.
+ * A failure here cannot prevent the lightweight first-party detail screen
+ * from opening. Third-party pages are visited only when the user selects
+ * their corresponding server.
  */
 final class SupjavServerResolver {
-    private static final int MAX_LINES = 12;
+    private static final int MAX_HOPS = 6;
+    private static final int MAX_CANDIDATES = 12;
+    private static final int MAX_PROBES = 3;
+
+    private static final class Route {
+        final String url;
+        final String referer;
+        Route(final String url, final String referer) {
+            this.url = url;
+            this.referer = referer;
+        }
+    }
+
     private SupjavServerResolver() { }
 
-    static List<VideoStream> resolve(final Document detail, final String detailUrl)
-            throws org.schabi.newpipe.extractor.exceptions.ParsingException {
-        final Map<String, VideoStream> found = new LinkedHashMap<>();
-        // Only selected player documents are trusted as media sources. The detail
-        // page may contain preview/advertisement media that cannot be played.
-        final java.util.List<Element> entries = detail.select(
-                ".btn-server[data-link], .btnst a[data-link], .btns a[data-link], "
-                + "#server-list [data-link], .server-list [data-link], "
-                + ".servers [data-link], [data-server][data-link], "
-                + "iframe#video[src], #player-wrap iframe[src], iframe#player[src]");
-        final java.util.List<String> labels = new ArrayList<>();
-        for (final Element entry : entries) {
-            labels.add(serverName(entry));
+    static List<VideoStream> resolveSelected(final Document detail,
+                                             final String selectedUrl,
+                                             final int selectedIndex)
+            throws IOException, ParsingException {
+        final String detailUrl = SupjavServerCatalog.pageUrl(selectedUrl);
+        final List<SupjavServerCatalog.Entry> entries =
+                SupjavServerCatalog.parse(detail, detailUrl);
+        if (selectedIndex < 0 || selectedIndex >= entries.size()) {
+            throw new ParsingException("Selected Supjav server is not on this page");
         }
-        // Many multi-CD pages list two identical consecutive sets of providers.
-        // Only assign inferred CD numbers when every set matches exactly.
-        int groupSize = 0;
-        for (int parts = 2; parts <= 10; parts++) {
-            if (entries.size() < 6 || entries.size() % parts != 0) continue;
-            final int size = entries.size() / parts;
-            if (size < 3 || size > 8) continue;
-            final java.util.Set<String> expected =
-                    new java.util.LinkedHashSet<>(labels.subList(0, size));
-            if (expected.size() != size) continue;
-            boolean match = true;
-            for (int part = 1; part < parts; part++) {
-                if (!expected.equals(new java.util.LinkedHashSet<>(
-                        labels.subList(part * size, (part + 1) * size)))) {
-                    match = false;
-                    break;
-                }
-            }
-            if (match) {
-                groupSize = size;
-                break;
-            }
+        final SupjavServerCatalog.Entry selected = entries.get(selectedIndex);
+        final String start = SupjavProviderExtractor.resolveDeclaredUrl(selected.link, detailUrl);
+        if (start == null) {
+            throw new ParsingException("Supjav " + selected.label()
+                    + " has an unsupported player link; browser playback required");
         }
-        int inspected = 0;
-        for (final Element item : entries) {
-            if (inspected >= 80) break;
-            final int position = inspected++;
-            final String name = labels.get(position);
-            final String explicitPart = readPart(item);
-            final String part = explicitPart != null ? explicitPart
-                    : groupSize > 0 ? "CD" + (position / groupSize + 1) : "Main";
-            final String sourceLabel = part + "|" + name;
-            final String raw = item.hasAttr("data-link")
-                    ? item.attr("data-link") : item.absUrl("src");
-            final String link = resolveDeclaredUrl(raw, detailUrl);
-            if (link == null) continue;
-            if (isMedia(link)) {
-                add(found, link, sourceLabel, detailUrl);
+
+        final ArrayDeque<Route> pending = new ArrayDeque<>();
+        final Set<String> visited = new HashSet<>();
+        final Map<String, VideoStream> candidates = new LinkedHashMap<>();
+        pending.add(new Route(start, detailUrl));
+        final long deadline = System.nanoTime() + 30_000_000_000L;
+        int hops = 0;
+        int lastHttp = 0;
+        boolean verification = false;
+
+        while (!pending.isEmpty() && hops < MAX_HOPS
+                && candidates.size() < MAX_CANDIDATES && System.nanoTime() < deadline) {
+            final Route route = pending.removeFirst();
+            if (!visited.add(route.url) ||
+                    !SupjavProviderExtractor.safePublicHttps(route.url)) continue;
+            hops++;
+
+            if (SupjavProviderExtractor.isMedia(route.url)) {
+                SupjavProviderExtractor.add(candidates, route.url,
+                        selected.part + "|" + selected.provider, route.referer);
                 continue;
             }
+
+            final Map<String, List<String>> headers = new HashMap<>();
+            headers.put("Referer", Collections.singletonList(route.referer));
+            headers.put("Accept", Collections.singletonList(
+                    "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"));
             try {
-                final Map<String, List<String>> headers = new java.util.HashMap<>();
-                headers.put("Referer", Collections.singletonList(detailUrl));
-                headers.put("User-Agent", Collections.singletonList(
-                        "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 "
-                        + "(KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"));
-                final Response response = NewPipe.getDownloader().get(link, headers);
-                if (response.responseCode() != 200 || response.responseBody() == null
-                        || response.responseBody().length() > 1000000) continue;
+                final Response response = NewPipe.getDownloader().get(route.url, headers);
+                lastHttp = response.responseCode();
+                if (lastHttp == 403 || lastHttp == 429) continue;
+                if (lastHttp < 200 || lastHttp >= 300) continue;
+                if (response.responseBody().length() > 1_000_000) continue;
                 final String finalUrl = response.latestUrl();
-                if (finalUrl != null && !safePublicHttps(finalUrl)) continue;
-                final Document player = org.jsoup.Jsoup.parse(response.responseBody(),
-                        finalUrl == null ? link : finalUrl);
-                addMedia(found, player, sourceLabel);
-                // A Supjav wrapper commonly embeds a second provider page.
-                // Follow only a declared player frame, not unrelated ad frames.
-                int nested = 0;
-                for (final Element frame : player.select(
+                if (!SupjavProviderExtractor.safePublicHttps(finalUrl)) continue;
+                final Document page = Jsoup.parse(response.responseBody(), finalUrl);
+                if (challenge(page)) {
+                    verification = true;
+                    continue;
+                }
+                for (final VideoStream stream : SupjavProviderExtractor.extract(page, selected)) {
+                    candidates.putIfAbsent(stream.getContent(), stream);
+                    if (candidates.size() >= MAX_CANDIDATES) break;
+                }
+
+                // Only follow recognized player embeds linked from this selected
+                // provider, never unrelated ad/sidebar frames.
+                for (final Element frame : page.select(
                         "iframe#video[src], iframe#player[src], "
-                        + ".player iframe[src], iframe[src*=/embed/], iframe[src*=/e/]")) {
-                    if (++nested > 3) break;
-                    final String frameUrl = frame.absUrl("src");
-                    if (!safePublicHttps(frameUrl)) continue;
-                    try {
-                        headers.put("Referer", Collections.singletonList(
-                                finalUrl == null ? link : finalUrl));
-                        final Response nestedResponse = NewPipe.getDownloader()
-                                .get(frameUrl, headers);
-                        if (nestedResponse.responseCode() != 200
-                                || nestedResponse.responseBody() == null
-                                || nestedResponse.responseBody().length() > 1000000) continue;
-                        final String nestedUrl = nestedResponse.latestUrl();
-                        if (nestedUrl != null && !safePublicHttps(nestedUrl)) continue;
-                        addMedia(found, org.jsoup.Jsoup.parse(
-                                nestedResponse.responseBody(),
-                                nestedUrl == null ? frameUrl : nestedUrl), sourceLabel);
-                    } catch (final Exception ignored) {
-                        // Keep trying other explicitly declared player frames.
-                    }
+                        + ".player iframe[src], iframe[src*=/embed/], "
+                        + "iframe[src*=/e/], iframe[src*=/player/]")) {
+                    if (pending.size() >= 8) break;
+                    final String target = frame.absUrl("src");
+                    if (!validFrame(target) || visited.contains(target)) continue;
+                    pending.addLast(new Route(target, finalUrl));
                 }
             } catch (final Exception ignored) {
-                // A broken provider must not hide the other player choices.
+                // A host can fail or require JavaScript; report a source-specific
+                // failure instead of globally invalidating the video's details.
             }
         }
-        // Probe only a bounded number of sources so opening a detail page
-        // never probes every mirror or every CD. Preserve unprobed sources for
-        // explicit selection; exclude only confirmed unusable media.
-        final List<VideoStream> verified = new ArrayList<>();
-        final List<VideoStream> remaining = new ArrayList<>();
-        int checked = 0;
-        int blocked = 0;
-        for (final VideoStream stream : found.values()) {
-            final SupjavMediaProbe.Status status = checked++ < 8
-                    ? SupjavMediaProbe.probe(stream) : SupjavMediaProbe.Status.UNKNOWN;
-            if (status == SupjavMediaProbe.Status.PLAYABLE) {
-                verified.add(stream);
-            } else if (status == SupjavMediaProbe.Status.BLOCKED) {
-                blocked++;
+
+        final List<VideoStream> playable = new ArrayList<>();
+        final List<VideoStream> unknown = new ArrayList<>();
+        int confirmedBlocked = 0;
+        int probes = 0;
+        for (final VideoStream candidate : candidates.values()) {
+            final SupjavMediaProbe.Status result = probes++ < MAX_PROBES
+                    ? SupjavMediaProbe.probe(candidate) : SupjavMediaProbe.Status.UNKNOWN;
+            if (result == SupjavMediaProbe.Status.PLAYABLE) {
+                playable.add(candidate);
+            } else if (result == SupjavMediaProbe.Status.BLOCKED) {
+                confirmedBlocked++;
             } else {
-                remaining.add(stream);
+                unknown.add(candidate);
             }
         }
-        if (verified.isEmpty() && remaining.isEmpty() && blocked > 0) {
-            // Explicit failure instead of sending a known 403/HTML source to ExoPlayer.
-            throw new org.schabi.newpipe.extractor.exceptions.ParsingException(
-                    "Supjav media access denied or media URL expired; "
-                    + "the selected server may require browser verification");
+        playable.addAll(unknown);
+        if (playable.isEmpty()) {
+            final String reason = verification ? "requires browser verification"
+                    : confirmedBlocked > 0 ? "media returned HTTP error or invalid response"
+                    : lastHttp == 403 || lastHttp == 429 ? "access refused (HTTP " + lastHttp + ")"
+                    : "requires JavaScript or browser player";
+            throw new ParsingException("Supjav " + selected.label() + ": " + reason);
         }
-        verified.addAll(remaining);
-        return verified;
+        return playable;
     }
 
-    private static String serverName(final Element item) {
-        final String value = item.text().trim().isEmpty()
-                ? item.attr("data-server").trim() : item.text().trim();
-        final String result = value.replaceAll(
-                "(?i)\\b(?:CD|DISC|PART)[ _-]*[0-9]+\\b", "").trim();
-        return result.isEmpty() ? "Player" : result.split("\\s+")[0]
-                .toUpperCase(java.util.Locale.ROOT);
+    private static boolean challenge(final Document doc) {
+        final String text = doc.text().toLowerCase(java.util.Locale.ROOT);
+        return text.contains("verify you are human")
+                || text.contains("checking your browser")
+                || text.contains("cloudflare challenge");
     }
 
-    private static String readPart(final Element item) {
-        final String raw = item.attr("data-part") + " " + item.attr("data-cd")
-                + " " + item.text() + " "
-                + (item.parent() == null ? "" : item.parent().attr("data-part"));
-        final java.util.regex.Matcher matcher = java.util.regex.Pattern.compile(
-                "(?i)(?:^|[^a-z0-9])(?:CD|DISC|PART)[ _-]*0?([1-9][0-9]?)"
-        ).matcher(raw);
-        return matcher.find() ? "CD" + Integer.parseInt(matcher.group(1)) : null;
-    }
-
-    private static void addMedia(final Map<String, VideoStream> out,
-                                 final Document page, final String label) {
-        // Native HTML5 sources are unambiguous; scanning arbitrary page scripts
-        // for a URL would also collect advertising or expired preview assets.
-        for (final String url : Parser.media(page, false)) {
-            add(out, url, label, page.location());
-        }
-        final java.util.regex.Pattern declared = java.util.regex.Pattern.compile(
-                "(?i)(?:urlPlay|streaming_url|file|source)\\s*[:=]\\s*[\\\"']"
-                + "(https?://[^\\\"'<>\\s]{8,2048})[\\\"']");
-        for (final Element script : page.select("script:not([src])")) {
-            final String rawScript = script.data().isEmpty() ? script.html() : script.data();
-            for (final String source : new String[]{rawScript, Parser.unpackPacker(rawScript)}) {
-                final java.util.regex.Matcher match = declared.matcher(source);
-                while (match.find()) {
-                    add(out, match.group(1).replace("\\/", "/"),
-                            label, page.location());
-                }
-            }
-        }
-        // EarnVids/LuluStream/FST may declare signed HLS URLs under
-        // hls2/hls4/hls3 instead of a normal <video> element.
-        final java.util.regex.Pattern signedHls = java.util.regex.Pattern.compile(
-                "(?i)(?:[\\\"']?)(hls[234])(?:[\\\"']?)\\s*:\\s*[\\\"']([^\\\"'<>]{8,3000})[\\\"']");
-        final java.util.Map<String, String> hls = new LinkedHashMap<>();
-        for (final Element script : page.select("script:not([src])")) {
-            final String content = script.data().isEmpty() ? script.html() : script.data();
-            final java.util.regex.Matcher found = signedHls.matcher(content);
-            while (found.find()) {
-                final String tag = found.group(1).toLowerCase(java.util.Locale.ROOT);
-                try {
-                    final String raw = found.group(2).replace("\\/", "/");
-                    final String url = URI.create(page.location()).resolve(raw).toString();
-                    if (safePublicHttps(url) && isMedia(url)) hls.putIfAbsent(tag, url);
-                } catch (final Exception ignored) { }
-            }
-        }
-        for (final String tag : new String[]{"hls2", "hls4", "hls3"}) {
-            final String url = hls.get(tag);
-            if (url != null) add(out, url, label, page.location());
-        }
-        // VOE publishes the stream in a ROT13 + Base64 JSON declaration.
-        for (final Element script : page.select("script[type=application/json]")) {
-            try {
-                final org.json.JSONArray values = new org.json.JSONArray(script.data());
-                final String encoded = values.optString(0);
-                if (encoded.length() < 10 || encoded.length() > 30000) continue;
-                String clean = encoded;
-                for (final String noise : new String[]{"@$", "^^", "~@", "%?", "*~", "!!", "#&", "_"}) {
-                    clean = clean.replace(noise, "");
-                }
-                final StringBuilder rotated = new StringBuilder();
-                for (final char c : clean.toCharArray()) {
-                    if (c >= 'a' && c <= 'z') rotated.append((char) ('a' + (c - 'a' + 13) % 26));
-                    else if (c >= 'A' && c <= 'Z') rotated.append((char) ('A' + (c - 'A' + 13) % 26));
-                    else rotated.append(c);
-                }
-                final String shifted = new String(java.util.Base64.getDecoder()
-                        .decode(rotated.toString()), java.nio.charset.StandardCharsets.US_ASCII);
-                final StringBuilder normal = new StringBuilder();
-                for (final char c : shifted.toCharArray()) normal.append((char) (c - 3));
-                final String decoded = new String(java.util.Base64.getDecoder()
-                        .decode(normal.reverse().toString()), java.nio.charset.StandardCharsets.UTF_8);
-                final String video = new org.json.JSONObject(decoded).optString("source");
-                add(out, video, label, page.location());
-            } catch (final Exception ignored) { }
-        }
-    }
-
-    private static void add(final Map<String, VideoStream> out,
-                            final String url, final String label,
-                            final String referer) {
-        if (!safePublicHttps(url) || !isMedia(url) || out.containsKey(label + "|" + url)) return;
-        final boolean hls = url.toLowerCase(java.util.Locale.ROOT)
-                .matches(".*\\.(?:m3u8|m3u)(?:[?#].*)?")
-                || URI.create(url).getPath().toLowerCase(java.util.Locale.ROOT)
-                    .matches(".*/hls[0-9]*/(?:master|index|playlist)[^/]*\\.txt");
-        final String quality = Parser.resolution(url);
-        out.put(label + "|" + url, new VideoStream.Builder()
-                .setId("SUPJAV|" + label + "|" + quality)
-                .setContent(url + "#supjav=1&ref=" + encode(referer), true)
-                .setResolution(quality)
-                .setMediaFormat(MediaFormat.MPEG_4)
-                .setDeliveryMethod(hls ? DeliveryMethod.HLS : DeliveryMethod.PROGRESSIVE_HTTP)
-                .setIsVideoOnly(false).build());
-    }
-
-    static String resolveDeclaredUrl(final String raw, final String detailUrl) {
-        if (raw == null || raw.isEmpty() || raw.length() > 2048) return null;
+    private static boolean validFrame(final String url) {
+        if (!SupjavProviderExtractor.safePublicHttps(url)) return false;
         try {
-            final String link;
-            if (raw.startsWith("https://")) {
-                link = raw;
-            } else if (raw.startsWith("//")) {
-                link = "https:" + raw;
-            } else if (raw.startsWith("/")) {
-                link = URI.create(detailUrl).resolve(raw).toString();
-            } else if (raw.matches("[A-Za-z0-9_-]{3,512}")) {
-                link = "https://lk1.supremejav.com/supjav.php?c="
-                        + new StringBuilder(raw).reverse();
-            } else {
-                return null;
-            }
-            return safePublicHttps(link) ? link : null;
-        } catch (final Exception ignored) {
-            return null;
-        }
-    }
-
-    private static String encode(final String value) {
-        try {
-            return java.net.URLEncoder.encode(value, "UTF-8");
-        } catch (final Exception ignored) {
-            return "";
-        }
-    }
-
-    private static boolean isMedia(final String url) {
-        final String lower = URI.create(url).getPath().toLowerCase(java.util.Locale.ROOT);
-        return lower.endsWith(".m3u8") || lower.endsWith(".m3u")
-                || lower.endsWith(".mp4")
-                || lower.matches(".*/hls[0-9]*/(?:master|index|playlist)[^/]*\\.txt");
-    }
-
-    private static boolean safePublicHttps(final String link) {
-        try {
-            final URI url = URI.create(link);
-            final String host = url.getHost();
-            return "https".equalsIgnoreCase(url.getScheme()) && host != null
-                    && url.getUserInfo() == null && url.getPort() == -1
-                    && host.matches("(?i)[a-z0-9-]+(?:\\.[a-z0-9-]+)+")
-                    && !host.matches(".*\\.(?:local|localhost|internal|lan|test)")
-                    && !host.matches(".*\\.[0-9]+")
-                    && !link.toLowerCase(java.util.Locale.ROOT)
-                        .matches(".*(?:advert|banner|popunder|preroll|tracker).*");
+            final String path = URI.create(url).getPath().toLowerCase(java.util.Locale.ROOT);
+            return path.matches("^/(?:e|embed|player|v|supjav\.php)(?:/.*)?$")
+                    || path.matches("^/(?:e|embed|player|v)/.+");
         } catch (final Exception ignored) {
             return false;
         }
