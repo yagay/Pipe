@@ -9,6 +9,9 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Locale;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -51,34 +54,96 @@ public final class MissAvBrowseCatalog {
         }
     }
 
+    private static final long CATEGORY_CACHE_TTL_MS = 30 * 60 * 1000L;
+    private static Map<String, List<Entry>> lastGoodCategories;
+    private static long lastCategoryLoad;
+
     private MissAvBrowseCatalog() {
     }
 
-    public static Map<String, List<Entry>> getCategories()
-            throws IOException, ExtractionException {
-        final Document page = MissAvParsingHelper.fetchDocument(
-                MissAvParsingHelper.BASE_URL + "/en");
-        final Map<String, String> available = new LinkedHashMap<>();
-        for (final Element link : page.select("a[href]")) {
-            final String label = link.text().trim();
-            final String url = normalizedSiteUrl(link.absUrl("href"));
-            if (!label.isEmpty() && !url.isEmpty()) {
-                available.putIfAbsent(label.toLowerCase(java.util.Locale.ROOT), url);
-            }
+    public static synchronized void invalidateCategories() {
+        lastCategoryLoad = 0;
+    }
+
+    private static String key(final String label) {
+        return label.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "");
+    }
+
+    private static String aliasKey(final String label) {
+        final String normalized = key(label);
+        if ("recentupdate".equals(normalized) || "recentlyupdated".equals(normalized)
+                || "latest".equals(normalized)) {
+            return "recentupdate";
         }
-        final Map<String, List<Entry>> result = new LinkedHashMap<>();
-        for (final String[] group : GROUPS) {
-            final List<Entry> items = new ArrayList<>();
-            for (int i = 1; i < group.length; i++) {
-                final String label = group[i];
-                final String url = available.get(label.toLowerCase(java.util.Locale.ROOT));
-                if (url != null && isBrowsePage(url)) {
-                    items.add(new Entry(label, url, false));
+        if ("newrelease".equals(normalized) || "newreleases".equals(normalized)) {
+            return "newreleases";
+        }
+        if ("englishsubtitle".equals(normalized) || "englishsubtitles".equals(normalized)) {
+            return "englishsubtitle";
+        }
+        if ("prestigepremium".equals(normalized) || "maan".equals(normalized)) {
+            return "prestigepremium";
+        }
+        if ("mostviewedbyweek".equals(normalized) || "mostviewedthisweek".equals(normalized)) {
+            return "mostviewedbyweek";
+        }
+        if ("mostviewedbymonth".equals(normalized) || "mostviewedthismonth".equals(normalized)) {
+            return "mostviewedbymonth";
+        }
+        return normalized;
+    }
+
+    public static synchronized Map<String, List<Entry>> getCategories()
+            throws IOException, ExtractionException {
+        if (lastGoodCategories != null
+                && System.currentTimeMillis() - lastCategoryLoad < CATEGORY_CACHE_TTL_MS) {
+            return lastGoodCategories;
+        }
+        try {
+            final Document page = MissAvParsingHelper.fetchDocument(
+                    MissAvParsingHelper.BASE_URL + "/" + MissAvParsingHelper.DEFAULT_LANGUAGE);
+            final Map<String, String> available = new LinkedHashMap<>();
+            // Prefer actual navigation links. An exact label is not required:
+            // capitalization, spaces and common menu translations can change.
+            for (final Element link : page.select("nav a[href], header a[href], aside a[href], a[href]")) {
+                final String label = link.text().trim();
+                final String url = normalizedSiteUrl(link.absUrl("href"));
+                if (!label.isEmpty() && !url.isEmpty() && isBrowsePage(url)) {
+                    available.putIfAbsent(aliasKey(label), url);
                 }
             }
-            result.put(group[0], items);
+            final Map<String, List<Entry>> result = new LinkedHashMap<>();
+            int total = 0;
+            for (final String[] group : GROUPS) {
+                final List<Entry> items = new ArrayList<>();
+                final Set<String> seen = new HashSet<>();
+                for (int i = 1; i < group.length; i++) {
+                    final String label = group[i];
+                    final String url = available.get(aliasKey(label));
+                    if (url != null && seen.add(url)) {
+                        items.add(new Entry(label, url, false));
+                    }
+                }
+                total += items.size();
+                result.put(group[0], Collections.unmodifiableList(items));
+            }
+            // A temporary layout change or blocked HTML must not replace usable
+            // navigation with a permanently empty catalog.
+            if (total == 0 && lastGoodCategories != null) {
+                return lastGoodCategories;
+            }
+            if (total == 0) {
+                throw new IOException("MissAV returned no supported category links");
+            }
+            lastGoodCategories = Collections.unmodifiableMap(result);
+            lastCategoryLoad = System.currentTimeMillis();
+            return lastGoodCategories;
+        } catch (final IOException | ExtractionException failure) {
+            if (lastGoodCategories != null) {
+                return lastGoodCategories;
+            }
+            throw failure;
         }
-        return result;
     }
 
     public static PageOptions getPageOptions(final String pageUrl)
@@ -121,8 +186,11 @@ public final class MissAvBrowseCatalog {
         if (path.isEmpty() || !isSiteUrl(url)) {
             return false;
         }
-        // Directory/listing links can be supported separately. Never confuse actual
-        // video-detail IDs with category list pages.
+        // A people/genre/maker directory needs its own extractor; do not feed
+        // those result pages to the generic video Kiosk.
+        if (path.matches("(?i).*/(actresses|actress|actors|actor|makers|maker|genres|genre|search|login|register|account|playlists|playlist)(/.*)?")) {
+            return false;
+        }
         final String slug = path.substring(path.lastIndexOf('/') + 1);
         return slug.isEmpty() || "naughty4610".equals(slug) || "naughty0930".equals(slug)
                 || !MissAvParsingHelper.isVideoId(slug);
