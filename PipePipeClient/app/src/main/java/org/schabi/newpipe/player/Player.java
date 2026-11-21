@@ -631,7 +631,6 @@ public final class Player implements
         binding.playPauseButton.setImageResource(R.drawable.ic_play_arrow);
         // Preserve the ordinary Pipe fullscreen action regardless of Android's
         // auto-rotate setting. Supjav is still the main VIDEO player.
-        setupScreenRotationButton();
         binding.supjavSourceControls.setVisibility(View.VISIBLE);
         binding.supjavServerButton.setText("线路 ▾");
         binding.supjavCdButtons.removeAllViews();
@@ -752,6 +751,8 @@ public final class Player implements
                     }
                 });
         supjavHlsEngine.setGestureListener(playerGestureListener);
+        // Must run AFTER attaching HLS; unlocked phones otherwise hide the icon.
+        setupScreenRotationButton();
         notifyQueueUpdateToListeners();
         // The PlayerHolder listener is installed only after service connection
         // returns. Deliver the queue again once it has been attached.
@@ -865,7 +866,9 @@ public final class Player implements
             tab.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
             tab.setTextColor(Color.WHITE);
             tab.setGravity(Gravity.CENTER);
-            tab.setPadding(dp(9), 0, dp(9), 0);
+            final int horizontalPadding = Math.round(
+                    9 * context.getResources().getDisplayMetrics().density);
+            tab.setPadding(horizontalPadding, 0, horizontalPadding, 0);
             final boolean selected = cd.equals(currentPart);
             tab.setAlpha(selected ? 1f : .65f);
             tab.setTypeface(null, selected
