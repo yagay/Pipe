@@ -192,6 +192,12 @@ public interface PlaybackResolver extends Resolver<StreamInfo, MediaSource> {
         } else if (ServiceList.TokyoMotion.equals(service)
                 && stream.getDeliveryMethod() == DeliveryMethod.PROGRESSIVE_HTTP) {
             return buildTokyoMotionProgressiveMediaSource(dataSource, stream, cacheKey, metadata);
+        } else if (ServiceList.Supjav.equals(service)
+                && stream.getDeliveryMethod() == DeliveryMethod.HLS) {
+            return buildSupjavHlsMediaSource(dataSource, stream, cacheKey, metadata);
+        } else if (ServiceList.Supjav.equals(service)
+                && stream.getDeliveryMethod() == DeliveryMethod.PROGRESSIVE_HTTP) {
+            return buildSupjavProgressiveMediaSource(dataSource, stream, cacheKey, metadata);
         } else if (ServiceList.SpankBang.equals(service)
                 && stream.getDeliveryMethod() == DeliveryMethod.HLS) {
             return buildSpankBangHlsMediaSource(dataSource, stream, cacheKey, metadata);
@@ -385,6 +391,37 @@ public interface PlaybackResolver extends Resolver<StreamInfo, MediaSource> {
                         .setUri(Uri.parse(stripStreamMarker(url, "#tokyomotion=1")))
                         .setCustomCacheKey(cacheKey)
                         .build());
+    }
+
+    @NonNull
+    private static <T extends Stream> HlsMediaSource buildSupjavHlsMediaSource(
+            @NonNull final PlayerDataSource dataSource,
+            @NonNull final T stream,
+            @NonNull final String cacheKey,
+            @NonNull final MediaItemTag metadata) throws IOException {
+        final String url = stream.getContent();
+        if (isNullOrEmpty(url)) throw new IOException("Empty Supjav HLS URL");
+        return dataSource.getSupjavHlsMediaSourceFactory(
+                extractPageReferer(url, "#supjav=1&ref=")).createMediaSource(
+                new MediaItem.Builder().setTag(metadata)
+                        .setUri(Uri.parse(stripStreamMarker(url, "#supjav=1")))
+                        .setCustomCacheKey(cacheKey).build());
+    }
+
+    @NonNull
+    private static <T extends Stream> ProgressiveMediaSource
+            buildSupjavProgressiveMediaSource(
+            @NonNull final PlayerDataSource dataSource,
+            @NonNull final T stream,
+            @NonNull final String cacheKey,
+            @NonNull final MediaItemTag metadata) throws IOException {
+        final String url = stream.getContent();
+        if (isNullOrEmpty(url)) throw new IOException("Empty Supjav MP4 URL");
+        return dataSource.getSupjavProgressiveMediaSourceFactory(
+                extractPageReferer(url, "#supjav=1&ref=")).createMediaSource(
+                new MediaItem.Builder().setTag(metadata)
+                        .setUri(Uri.parse(stripStreamMarker(url, "#supjav=1")))
+                        .setCustomCacheKey(cacheKey).build());
     }
 
     @NonNull
