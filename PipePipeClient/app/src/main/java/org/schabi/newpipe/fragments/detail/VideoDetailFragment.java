@@ -66,6 +66,8 @@ import org.schabi.newpipe.error.UserAction;
 import org.schabi.newpipe.extractor.InfoItem;
 import org.schabi.newpipe.extractor.NewPipe;
 import org.schabi.newpipe.extractor.ServiceList;
+import org.schabi.newpipe.extractor.services.extended.supjav.SupjavServerCatalog;
+import org.schabi.newpipe.diagnostics.DiagnosticLog;
 import org.schabi.newpipe.extractor.exceptions.ContentNotSupportedException;
 import org.schabi.newpipe.extractor.exceptions.ExtractionException;
 import org.schabi.newpipe.extractor.sponsorblock.SponsorBlockAction;
@@ -208,6 +210,7 @@ public final class VideoDetailFragment
     protected PlayQueue playQueue = null;
     int bottomSheetState = BottomSheetBehavior.STATE_EXPANDED;
     protected boolean autoPlayEnabled = true;
+    private boolean supjavPlayAfterSelection = false;
     SponsorBlockMode currentSponsorBlockMode = null;
 
     @Nullable
@@ -1072,11 +1075,33 @@ public final class VideoDetailFragment
                         }
                     }
 
-                    if (isAutoplayEnabled()) {
+                    if (supjavPlayAfterSelection) {
+                        supjavPlayAfterSelection = false;
+                        openVideoPlayerAutoFullscreen();
+                    } else if (isAutoplayEnabled()) {
                         openVideoPlayerAutoFullscreen();
                     }
-                }, throwable -> showError(new ErrorInfo(throwable, UserAction.REQUESTED_STREAM,
-                        url == null ? "no url" : url, serviceId)));
+                }, throwable -> {
+                    supjavPlayAfterSelection = false;
+                    showError(new ErrorInfo(throwable, UserAction.REQUESTED_STREAM,
+                            url == null ? "no url" : url, serviceId));
+                    if (serviceId == ServiceList.Supjav.getServiceId()
+                            && SupjavServerCatalog.selectedIndex(url) >= 0 && isAdded()) {
+                        DiagnosticLog.error("SUPJAV", "SELECTED_SERVER_FAILED", throwable,
+                                "serverIndex=" + SupjavServerCatalog.selectedIndex(url));
+                        new AlertDialog.Builder(requireContext())
+                                .setTitle("Supjav server unavailable")
+                                .setMessage("This source may require browser playback. "
+                                        + "Choose another server or open the original site.")
+                                .setPositiveButton("Other servers",
+                                        (dialog, which) -> showSupjavServerPicker())
+                                .setNeutralButton("Open website", (dialog, which) ->
+                                        ShareUtils.openUrlInBrowser(requireContext(),
+                                                SupjavServerCatalog.pageUrl(url)))
+                                .setNegativeButton(android.R.string.cancel, null)
+                                .show();
+                    }
+                });
     }
 
     /*//////////////////////////////////////////////////////////////////////////
@@ -1388,6 +1413,15 @@ public final class VideoDetailFragment
      *                                       in landscape and screen orientation is locked
      */
     public void openVideoPlayer(final boolean directlyFullscreenIfApplicable) {
+        // A Supjav detail is allowed to load without resolving third-party media.
+        // Resolve exactly one CD/server only after the user requests playback.
+        if (currentInfo != null
+                && currentInfo.getServiceId() == ServiceList.Supjav.getServiceId()
+                && (SupjavServerCatalog.selectedIndex(currentInfo.getUrl()) < 0
+                    || currentInfo.getVideoStreams().isEmpty())) {
+            showSupjavServerPicker();
+            return;
+        }
         if (directlyFullscreenIfApplicable
                 && !DeviceUtils.isLandscape(requireContext())
                 && PlayerHelper.globalScreenOrientationLocked(requireContext())) {
@@ -1476,6 +1510,98 @@ public final class VideoDetailFragment
         } else {
             playerHolder.stopService();
         }
+    }
+
+    /**
+     * One lightweight source switcher, independent of the player's resolution
+     * menu. CD and provider are selected before video quality becomes available.
+     */
+    private void configureSupjavSourceButton(final StreamInfo info) {
+        if (binding == null) return;
+        final LinearLayout toolbar = binding.detailSecondaryControlPanel;
+        final String marker = "supjav_source_picker";
+        View selector = toolbar.findViewWithTag(marker);
+        final boolean supjav = info.getServiceId() == ServiceList.Supjav.getServiceId();
+        if (!supjav) {
+            if (selector != null) toolbar.removeView(selector);
+            return;
+        }
+        if (selector == null) {
+            final android.widget.TextView button = new android.widget.TextView(requireContext());
+            button.setTag(marker);
+            button.setText("CD / Server");
+            button.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+            button.setGravity(android.view.Gravity.CENTER);
+            button.setClickable(true);
+            button.setFocusable(true);
+            button.setBackgroundResource(android.R.attr.selectableItemBackgroundBorderless);
+            toolbar.addView(button, 0, new LinearLayout.LayoutParams(0,
+                    getResources().getDimensionPixelSize(R.dimen.detail_control_height), 1));
+            selector = button;
+        }
+        selector.setOnClickListener(v -> showSupjavServerPicker());
+    }
+
+    private void showSupjavServerPicker() {
+        final String detailUrl = currentInfo != null ? currentInfo.getUrl() : url;
+        if (detailUrl == null || !isAdded()) return;
+        disposables.add(Single.fromCallable(() -> SupjavServerCatalog.forPage(detailUrl))
+                .subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(entries -> {
+                    if (!isAdded()) return;
+                    if (entries.isEmpty()) {
+                        new AlertDialog.Builder(requireContext())
+                                .setTitle("Supjav")
+                                .setMessage("No server entries on this video page.")
+                                .setPositiveButton("Open website", (dialog, which) ->
+                                        ShareUtils.openUrlInBrowser(requireContext(),
+                                                SupjavServerCatalog.pageUrl(detailUrl)))
+                                .setNegativeButton(android.R.string.cancel, null).show();
+                        return;
+                    }
+                    final String[] labels = new String[entries.size()];
+                    for (int i = 0; i < entries.size(); i++) {
+                        labels[i] = entries.get(i).label();
+                    }
+                    new AlertDialog.Builder(requireContext())
+                            .setTitle("Choose CD / Server")
+                            .setSingleChoiceItems(labels,
+                                    SupjavServerCatalog.selectedIndex(detailUrl),
+                                    (dialog, position) -> {
+                                        dialog.dismiss();
+                                        final SupjavServerCatalog.Entry selected =
+                                                entries.get(position);
+                                        DiagnosticLog.event("SUPJAV", "SERVER_SELECTED",
+                                                "part=" + selected.part + " server="
+                                                        + selected.provider
+                                                        + " index=" + selected.index);
+                                        final String target = SupjavServerCatalog.selectedUrl(
+                                                detailUrl, selected.index);
+                                        if (target.equals(url) && currentInfo != null
+                                                && !currentInfo.getVideoStreams().isEmpty()) {
+                                            openVideoPlayerAutoFullscreen();
+                                            return;
+                                        }
+                                        supjavPlayAfterSelection = true;
+                                        setAutoPlay(true);
+                                        selectAndLoadVideo(ServiceList.Supjav.getServiceId(),
+                                                target,
+                                                currentInfo == null ? title : currentInfo.getName(),
+                                                null);
+                                    })
+                            .setNeutralButton("Open website", (dialog, which) ->
+                                    ShareUtils.openUrlInBrowser(requireContext(),
+                                            SupjavServerCatalog.pageUrl(detailUrl)))
+                            .setNegativeButton(android.R.string.cancel, null)
+                            .show();
+                }, error -> {
+                    DiagnosticLog.error("SUPJAV", "CATALOG_FAILED", error, "source picker");
+                    if (isAdded()) {
+                        Toast.makeText(requireContext(),
+                                "Could not load Supjav server list", Toast.LENGTH_LONG).show();
+                    }
+                }));
     }
 
     private PlayQueue setupPlayQueueForIntent(final boolean append) {
@@ -1839,6 +1965,7 @@ public final class VideoDetailFragment
         super.handleResult(info);
 
         currentInfo = info;
+        configureSupjavSourceButton(info);
         setInitialData(info.getServiceId(), info.getOriginalUrl(), info.getName(), playQueue);
 
         updateTabs(info);
