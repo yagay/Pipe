@@ -46,6 +46,7 @@ public final class SupjavHlsEngine {
     private final Handler main = new Handler(Looper.getMainLooper());
     private WebView resolver;
     private WebView player;
+    private View.OnTouchListener gestureListener;
     private int selectedIndex = -1;
     private boolean selectedApplied;
     private boolean attempted;
@@ -61,6 +62,12 @@ public final class SupjavHlsEngine {
     }
 
     public boolean isReady() { return ready; }
+
+    /** Route browser video gestures into the existing Pipe gesture controller. */
+    public void setGestureListener(final View.OnTouchListener listener) {
+        gestureListener = listener;
+        if (player != null) player.setOnTouchListener(listener);
+    }
 
     public void open(final String url, final int index) {
         close();
@@ -248,6 +255,7 @@ public final class SupjavHlsEngine {
                 resolver.getSettings().getUserAgentString());
         CookieManager.getInstance().setAcceptThirdPartyCookies(player, true);
         final WebView playingView = player;
+        if (gestureListener != null) player.setOnTouchListener(gestureListener);
         player.setWebChromeClient(new WebChromeClient() {
             @Override public boolean onConsoleMessage(final ConsoleMessage message) {
                 final String msg = message.message();
