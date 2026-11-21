@@ -104,6 +104,14 @@ public final class SupjavServerCatalog {
         return entries.get(0).index;
     }
 
+    /** Identify a selected provider from the first-party detail snapshot without network I/O. */
+    public static boolean selectedProviderIs(final String selectedUrl, final String provider) {
+        final int index = selectedIndex(selectedUrl);
+        final Snapshot snapshot = CACHE.get(pageUrl(selectedUrl));
+        return index >= 0 && snapshot != null && index < snapshot.entries.size()
+                && provider.equalsIgnoreCase(snapshot.entries.get(index).provider);
+    }
+
     public static String selectedUrl(final String detailUrl, final int index) {
         if (index < 0 || index >= 80) throw new IllegalArgumentException("Invalid server index");
         return pageUrl(detailUrl) + "?pipe_server=" + index;
