@@ -308,7 +308,7 @@ final class SupjavProviderExtractor {
                 .setId(source.getId())
                 .setContent(source.getContent() + "&origin=0", true)
                 .setResolution(source.getResolution())
-                .setMediaFormat(source.getMediaFormat())
+                .setMediaFormat(source.getFormat())
                 .setDeliveryMethod(source.getDeliveryMethod())
                 .setIsVideoOnly(source.isVideoOnly())
                 .build();
