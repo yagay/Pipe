@@ -61,6 +61,7 @@
         android:layout_marginTop="2dp"
         android:ellipsize="end"
         android:maxLines="1"
+        android:visibility="gone"
         android:textColor="#B3FFFFFF"
         android:textSize="10sp"
         app:layout_constraintEnd_toEndOf="parent"
