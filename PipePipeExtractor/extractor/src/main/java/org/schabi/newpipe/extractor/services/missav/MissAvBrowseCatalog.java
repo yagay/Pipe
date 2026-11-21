@@ -188,7 +188,8 @@ public final class MissAvBrowseCatalog {
         }
         // A people/genre/maker directory needs its own extractor; do not feed
         // those result pages to the generic video Kiosk.
-        if (path.matches("(?i).*/(actresses|actress|actors|actor|makers|maker|genres|genre|search|login|register|account|playlists|playlist)(/.*)?")) {
+        if (path.matches("(?i).*/(actresses|actress|actors|actor|makers|maker|genres|genre|search|login|register|account|playlists|playlist)$")
+                || path.matches("(?i).*/(search|login|register|account|playlists|playlist)/.*")) {
             return false;
         }
         final String slug = path.substring(path.lastIndexOf('/') + 1);
