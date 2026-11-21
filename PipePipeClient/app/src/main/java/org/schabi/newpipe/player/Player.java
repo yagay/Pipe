@@ -319,6 +319,7 @@ public final class Player implements
     private float supjavHlsSpeed = 1f;
     private final java.util.List<Integer> supjavQualityLevels = new java.util.ArrayList<>();
     private boolean supjavQueueActive;
+    private boolean supjavForegroundNotification;
 
     private final Handler controlsVisibilityHandler = new Handler();
 
@@ -592,6 +593,12 @@ public final class Player implements
         playQueueAdapter = new PlayQueueAdapter(context, queue);
         currentItem = queue.getItem();
         currentMetadata = null;
+        currentThumbnail = null;
+        if (mediaSessionManager != null) {
+            mediaSessionManager.setPlayer(this);
+            mediaSessionManager.setBrowserPlayback(true);
+        }
+        supjavForegroundNotification = false;
         supjavHlsSpeed = 1f;
         supjavQualityLevels.clear();
         supjavHlsPositionMs = 0;
@@ -642,6 +649,9 @@ public final class Player implements
                                         duration / 60000, duration / 1000 % 60));
                         notifyProgressUpdateToListeners((int) Math.min(Integer.MAX_VALUE, position),
                                 (int) Math.min(Integer.MAX_VALUE, duration), 0);
+                        updateSupjavSession(paused
+                                ? android.support.v4.media.session.PlaybackStateCompat.STATE_PAUSED
+                                : android.support.v4.media.session.PlaybackStateCompat.STATE_PLAYING);
                         if (isQueueVisible) {
                             updateQueueTime((int) Math.min(Integer.MAX_VALUE, position));
                         }
@@ -659,6 +669,8 @@ public final class Player implements
                         binding.playbackControlRoot.setVisibility(View.VISIBLE);
                         currentState = STATE_PAUSED;
                         supjavHlsPaused = true;
+                        updateSupjavSession(
+                                android.support.v4.media.session.PlaybackStateCompat.STATE_PAUSED);
                         notifyPlaybackUpdateToListeners();
                     }
                     @Override public void onPlaying() {
@@ -668,6 +680,16 @@ public final class Player implements
                         binding.loadingPanelWrapper.setVisibility(View.GONE);
                         binding.playbackControlRoot.setVisibility(View.VISIBLE);
                         binding.playPauseButton.setImageResource(R.drawable.ic_pause);
+                        updateSupjavSession(
+                                android.support.v4.media.session.PlaybackStateCompat.STATE_PLAYING);
+                        if (!supjavForegroundNotification) {
+                            NotificationUtil.getInstance().createNotificationAndStartForeground(
+                                    Player.this, service.getInstance());
+                            supjavForegroundNotification = true;
+                        } else {
+                            NotificationUtil.getInstance()
+                                    .createNotificationIfNeededAndUpdate(Player.this, false);
+                        }
                         notifyPlaybackUpdateToListeners();
                     }
                     @Override public void onEnded() {
@@ -683,6 +705,8 @@ public final class Player implements
                         } else {
                             currentState = STATE_COMPLETED;
                             binding.playPauseButton.setImageResource(R.drawable.ic_replay);
+                            updateSupjavSession(
+                                    android.support.v4.media.session.PlaybackStateCompat.STATE_STOPPED);
                             notifyPlaybackUpdateToListeners();
                         }
                     }
@@ -691,6 +715,8 @@ public final class Player implements
                         binding.loadingPanelWrapper.setVisibility(View.GONE);
                         currentState = STATE_PAUSED;
                         supjavHlsPaused = true;
+                        updateSupjavSession(
+                                android.support.v4.media.session.PlaybackStateCompat.STATE_PAUSED);
                         notifyPlaybackUpdateToListeners();
                         DiagnosticLog.event("SUPJAV_ENGINE", "UNAVAILABLE", "reason=" + reason);
                         android.widget.Toast.makeText(context,
@@ -732,6 +758,9 @@ public final class Player implements
         binding.playbackEndTime.setText("0:00");
         binding.loadingPanelWrapper.setVisibility(View.VISIBLE);
         binding.playPauseButton.setImageResource(R.drawable.ic_play_arrow);
+        updateSupjavSession(
+                android.support.v4.media.session.PlaybackStateCompat.STATE_BUFFERING);
+        if (mediaSessionManager != null) mediaSessionManager.refreshBrowserQueue();
         showOrHideButtons();
         closeItemsList();
         supjavHlsEngine.open(url, supjavServerIndex);
@@ -747,6 +776,13 @@ public final class Player implements
         openSupjavQueueItem(playQueue.getItem().getUrl());
     }
 
+    private void updateSupjavSession(final int state) {
+        if (mediaSessionManager != null && supjavHlsEngine != null) {
+            mediaSessionManager.updateBrowserPlayback(state, supjavHlsPositionMs,
+                    supjavHlsDurationMs, supjavHlsSpeed);
+        }
+    }
+
     public boolean isSupjavHlsActive() {
         return supjavHlsEngine != null;
     }
@@ -755,6 +791,12 @@ public final class Player implements
         if (supjavHlsEngine == null) return;
         supjavHlsEngine.close();
         supjavHlsEngine = null;
+        if (mediaSessionManager != null) mediaSessionManager.setBrowserPlayback(false);
+        if (supjavForegroundNotification) {
+            NotificationUtil.getInstance().cancelNotificationAndStopForeground(
+                    service.getInstance());
+            supjavForegroundNotification = false;
+        }
         supjavHlsPositionMs = 0;
         supjavHlsDurationMs = 0;
         supjavHlsPaused = true;
@@ -4156,6 +4198,7 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
 
     @NonNull
     public String getVideoTitle() {
+        if (supjavHlsEngine != null && currentItem != null) return currentItem.getTitle();
         return currentMetadata == null
                 ? context.getString(R.string.unknown_content)
                 : currentMetadata.getTitle();
@@ -4163,6 +4206,7 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
 
     @NonNull
     public String getUploaderName() {
+        if (supjavHlsEngine != null && currentItem != null) return currentItem.getUploader();
         return currentMetadata == null
                 ? context.getString(R.string.unknown_content)
                 : currentMetadata.getUploaderName();
@@ -4260,6 +4304,9 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
     public void onPlayQueueEdited() {
         notifyPlaybackUpdateToListeners();
         showOrHideButtons();
+        if (supjavHlsEngine != null && mediaSessionManager != null) {
+            mediaSessionManager.refreshBrowserQueue();
+        }
         if (supjavHlsEngine == null) {
             NotificationUtil.getInstance().createNotificationIfNeededAndUpdate(this, false);
         }
