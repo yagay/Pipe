@@ -194,7 +194,8 @@ public class KioskFragment extends BaseListInfoFragment<StreamInfoItem, KioskInf
                             return;
                         }
                         if (entry.getId().startsWith("category:")
-                                || entry.getId().startsWith("sort:")) {
+                                || entry.getId().startsWith("sort:")
+                                || entry.getId().startsWith("filter:")) {
                             NavigationHelper.openSiteCategoryFragment(getFM(), serviceId,
                                     entry.getUrl(), entry.getLabel());
                             return;
