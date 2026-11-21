@@ -66,7 +66,11 @@ public final class SiteHtmlKioskExtractor extends KioskExtractor<StreamInfoItem>
         int accepted = 0;
         for (final Element link : page.select("a[href]")) {
             final String target = link.absUrl("href");
-            if (target.isEmpty() || !getService().getStreamLHFactory().onAcceptUrl(target)) {
+            try {
+                if (target.isEmpty() || !getService().getStreamLHFactory().onAcceptUrl(target)) {
+                    continue;
+                }
+            } catch (final ParsingException ignored) {
                 continue;
             }
             final Element card = link.selectFirst("img") == null && link.parent() != null
