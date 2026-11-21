@@ -46,9 +46,24 @@
         </ScrollView>
     </LinearLayout>
 
+    <HorizontalScrollView
+        android:id="@+id/site_browse_header"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/missav_browse_header"
+        android:scrollbars="none"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/site_browse_tabs"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal" />
+    </HorizontalScrollView>
+
     <org.schabi.newpipe.views.NewPipeRecyclerView
         android:id="@+id/items_list"
-        android:layout_below="@id/missav_browse_header"
+        android:layout_below="@id/site_browse_header"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:scrollbars="vertical"
