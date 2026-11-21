@@ -324,6 +324,7 @@ public final class Player implements
     //////////////////////////////////////////////////////////////////////////*/
 
     private static final int POPUP_MENU_ID_QUALITY = 69;
+    private static final int POPUP_MENU_ID_SUPJAV_SERVER = 70;
     private static final int POPUP_MENU_ID_PLAYBACK_SPEED = 79;
     private static final int POPUP_MENU_ID_CAPTION = 89;
     private static final int POPUP_MENU_ID_AUDIO_TRACK = 99;
@@ -4288,6 +4289,8 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
                 submenu.add(POPUP_MENU_ID_QUALITY, i, Menu.NONE,
                         server + " · " + stream.getResolution());
             }
+            qualityPopupMenu.getMenu().add(POPUP_MENU_ID_SUPJAV_SERVER, -2400,
+                    Menu.NONE, "Switch CD / Server");
         } else {
             for (int i = 0; i < availableStreams.size(); i++) {
                 final VideoStream videoStream = availableStreams.get(i);
@@ -4407,6 +4410,13 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
                     + "menuItem.getItemId = [" + menuItem.getItemId() + "]");
         }
 
+        if (menuItem.getGroupId() == POPUP_MENU_ID_SUPJAV_SERVER) {
+            final Intent picker = new Intent(
+                    VideoDetailFragment.ACTION_SUPJAV_SERVER_PICKER);
+            picker.setPackage(context.getPackageName());
+            context.sendBroadcast(picker);
+            return true;
+        }
         if (menuItem.getGroupId() == POPUP_MENU_ID_QUALITY) {
             final int menuItemIndex = menuItem.getItemId();
             if (selectedStreamIndex == menuItemIndex || availableStreams == null
