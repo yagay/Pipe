@@ -3,6 +3,8 @@ package org.schabi.newpipe.extractor.services.missav;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.schabi.newpipe.extractor.InfoItem;
+import org.schabi.newpipe.extractor.NewPipe;
+import org.schabi.newpipe.extractor.downloader.Response;
 import org.schabi.newpipe.extractor.InfoItemExtractor;
 import org.schabi.newpipe.extractor.InfoItemsCollector;
 import org.schabi.newpipe.extractor.MediaFormat;
@@ -216,7 +218,26 @@ public final class MissAvStreamExtractor extends StreamExtractor {
             addEightyFivePoStreams(streams);
             return streams;
         }
-        addHlsStream(streams, "hls", "HLS", getHlsUrl());
+        final String masterUrl = getHlsUrl();
+        // Read the actual variants listed by the CDN master playlist. When a
+        // site serves a media playlist (or the probe fails), retain the old
+        // stream instead of making up quality URLs that may not exist.
+        try {
+            final Response response = NewPipe.getDownloader().get(
+                    masterUrl, MissAvParsingHelper.hlsHeaders(getUrl()));
+            if (response.responseCode() >= 200 && response.responseCode() < 300) {
+                for (final MissAvHlsQualityParser.Variant variant
+                        : MissAvHlsQualityParser.parse(masterUrl, response.responseBody())) {
+                    addHlsStream(streams, "hls-" + variant.height,
+                            variant.resolution, variant.url);
+                }
+            }
+        } catch (final IOException | ExtractionException probeFailure) {
+            // This is an optional quality probe; do not stop playback.
+        }
+        if (streams.isEmpty()) {
+            addHlsStream(streams, "hls", "HLS", masterUrl);
+        }
         return streams;
     }
 
