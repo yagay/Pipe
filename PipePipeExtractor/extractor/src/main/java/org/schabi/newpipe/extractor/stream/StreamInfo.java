@@ -222,6 +222,15 @@ public class StreamInfo extends Info {
 
         // Either audio or video has to be available, otherwise we didn't get a stream (since
         // videoOnly are optional, they don't count).
+        // Supjav exposes a first-party CD/server catalog before any third-party
+        // media has been resolved. The detail screen must remain available when
+        // providers require JavaScript or return HTTP 403; selecting a server
+        // creates a separate URL and then resolves its actual media stream.
+        if (streamInfo.getServiceId() == ServiceList.Supjav.getServiceId()
+                && org.schabi.newpipe.extractor.services.extended.supjav.SupjavServerCatalog
+                        .selectedIndex(streamInfo.getUrl()) < 0) {
+            return;
+        }
         if ((streamInfo.videoStreams.isEmpty()) && (streamInfo.audioStreams.isEmpty())) {
             final List<Throwable> errors = streamInfo.getErrors();
             final StreamExtractException exception = new StreamExtractException(
