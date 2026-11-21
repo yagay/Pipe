@@ -68,7 +68,7 @@ import org.schabi.newpipe.extractor.NewPipe;
 import org.schabi.newpipe.extractor.ServiceList;
 import org.schabi.newpipe.extractor.services.extended.supjav.SupjavServerCatalog;
 import org.schabi.newpipe.diagnostics.DiagnosticLog;
-import org.schabi.newpipe.views.SupjavWebPlayerActivity;
+
 import org.schabi.newpipe.extractor.exceptions.ContentNotSupportedException;
 import org.schabi.newpipe.extractor.exceptions.ExtractionException;
 import org.schabi.newpipe.extractor.sponsorblock.SponsorBlockAction;
@@ -1644,7 +1644,7 @@ public final class VideoDetailFragment
                                 .setTitle("Supjav")
                                 .setMessage("No server entries on this video page.")
                                 .setPositiveButton("Open website", (dialog, which) ->
-                                        SupjavWebPlayerActivity.open(requireContext(), detailUrl))
+                                        ShareUtils.openUrlInBrowser(requireActivity(), detailUrl))
                                 .setNegativeButton(android.R.string.cancel, null).show();
                         return;
                     }
@@ -1663,7 +1663,7 @@ public final class VideoDetailFragment
                                         navigateToSupjavServer(detailUrl, entries.get(position));
                                     })
                             .setNeutralButton("Open website", (dialog, which) ->
-                                    SupjavWebPlayerActivity.open(requireContext(), detailUrl))
+                                    ShareUtils.openUrlInBrowser(requireActivity(), detailUrl))
                             .setNegativeButton(android.R.string.cancel, null)
                             .show();
                 }, error -> {
