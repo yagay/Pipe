@@ -1366,7 +1366,7 @@ public final class VideoDetailFragment
 
     private void openBackgroundPlayer(final boolean append) {
         if (supjavNeedsSourceSelection()) {
-            showSupjavServerPicker();
+            playPreferredSupjavServer();
             return;
         }
 
@@ -1390,7 +1390,7 @@ public final class VideoDetailFragment
 
     private void openPopupPlayer(final boolean append) {
         if (supjavNeedsSourceSelection()) {
-            showSupjavServerPicker();
+            playPreferredSupjavServer();
             return;
         }
         if (!PermissionHelper.isPopupEnabled(activity)) {
@@ -1427,7 +1427,7 @@ public final class VideoDetailFragment
         // A Supjav detail is allowed to load without resolving third-party media.
         // Resolve exactly one CD/server only after the user requests playback.
         if (supjavNeedsSourceSelection()) {
-            showSupjavServerPicker();
+            playPreferredSupjavServer();
             return;
         }
         if (directlyFullscreenIfApplicable
@@ -1561,6 +1561,56 @@ public final class VideoDetailFragment
         selector.setOnClickListener(v -> showSupjavServerPicker());
     }
 
+    /** Default to the first-CD VAS line, but let the user override it at any time. */
+    private void playPreferredSupjavServer() {
+        final String detailUrl = currentInfo != null ? currentInfo.getUrl() : url;
+        if (detailUrl == null || !isAdded()) return;
+        // A manually chosen server is never silently replaced by VAS.
+        if (SupjavServerCatalog.selectedIndex(detailUrl) >= 0) {
+            showSupjavServerPicker();
+            return;
+        }
+        disposables.add(Single.fromCallable(() -> SupjavServerCatalog.forPage(detailUrl))
+                .subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(entries -> {
+                    if (!isAdded()) return;
+                    final int preferred = SupjavServerCatalog.preferredIndex(entries, null);
+                    if (preferred < 0) {
+                        showSupjavServerPicker();
+                        return;
+                    }
+                    for (final SupjavServerCatalog.Entry item : entries) {
+                        if (item.index == preferred) {
+                            navigateToSupjavServer(detailUrl, item);
+                            return;
+                        }
+                    }
+                    showSupjavServerPicker();
+                }, error -> {
+                    DiagnosticLog.error("SUPJAV", "DEFAULT_SERVER_FAILED", error,
+                            "VAS default selection");
+                    if (isAdded()) showSupjavServerPicker();
+                }));
+    }
+
+    private void navigateToSupjavServer(final String detailUrl,
+                                        final SupjavServerCatalog.Entry selected) {
+        DiagnosticLog.event("SUPJAV", "SERVER_SELECTED",
+                "part=" + selected.part + " server=" + selected.provider
+                        + " index=" + selected.index);
+        final String target = SupjavServerCatalog.selectedUrl(detailUrl, selected.index);
+        if (target.equals(url) && currentInfo != null
+                && !currentInfo.getVideoStreams().isEmpty()) {
+            openVideoPlayerAutoFullscreen();
+            return;
+        }
+        supjavPlayAfterSelection = true;
+        setAutoPlay(true);
+        selectAndLoadVideo(ServiceList.Supjav.getServiceId(), target,
+                currentInfo == null ? title : currentInfo.getName(), null);
+    }
+
     private void showSupjavServerPicker() {
         final String detailUrl = currentInfo != null ? currentInfo.getUrl() : url;
         if (detailUrl == null || !isAdded()) return;
@@ -1583,31 +1633,15 @@ public final class VideoDetailFragment
                     for (int i = 0; i < entries.size(); i++) {
                         labels[i] = entries.get(i).label();
                     }
+                    final int currentServer = SupjavServerCatalog.selectedIndex(detailUrl);
+                    final int displayedIndex = currentServer >= 0 ? currentServer
+                            : SupjavServerCatalog.preferredIndex(entries, null);
                     new AlertDialog.Builder(requireContext())
                             .setTitle("Choose CD / Server")
-                            .setSingleChoiceItems(labels,
-                                    SupjavServerCatalog.selectedIndex(detailUrl),
+                            .setSingleChoiceItems(labels, displayedIndex,
                                     (dialog, position) -> {
                                         dialog.dismiss();
-                                        final SupjavServerCatalog.Entry selected =
-                                                entries.get(position);
-                                        DiagnosticLog.event("SUPJAV", "SERVER_SELECTED",
-                                                "part=" + selected.part + " server="
-                                                        + selected.provider
-                                                        + " index=" + selected.index);
-                                        final String target = SupjavServerCatalog.selectedUrl(
-                                                detailUrl, selected.index);
-                                        if (target.equals(url) && currentInfo != null
-                                                && !currentInfo.getVideoStreams().isEmpty()) {
-                                            openVideoPlayerAutoFullscreen();
-                                            return;
-                                        }
-                                        supjavPlayAfterSelection = true;
-                                        setAutoPlay(true);
-                                        selectAndLoadVideo(ServiceList.Supjav.getServiceId(),
-                                                target,
-                                                currentInfo == null ? title : currentInfo.getName(),
-                                                null);
+                                        navigateToSupjavServer(detailUrl, entries.get(position));
                                     })
                             .setNeutralButton("Open website", (dialog, which) ->
                                     SupjavWebPlayerActivity.open(requireContext(),
