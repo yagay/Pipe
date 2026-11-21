@@ -26,6 +26,9 @@ import org.schabi.newpipe.extractor.kiosk.BrowseUrlState;
 import org.schabi.newpipe.extractor.linkhandler.ListLinkHandlerFactory;
 import org.schabi.newpipe.extractor.localization.ContentCountry;
 import org.schabi.newpipe.extractor.stream.StreamInfoItem;
+import org.schabi.newpipe.player.playqueue.PlayQueue;
+import org.schabi.newpipe.player.playqueue.KioskPlayQueue;
+import java.util.List;
 import org.schabi.newpipe.fragments.list.BaseListInfoFragment;
 import org.schabi.newpipe.util.ExtractorHelper;
 import org.schabi.newpipe.util.KioskTranslator;
@@ -262,6 +265,14 @@ public class KioskFragment extends BaseListInfoFragment<StreamInfoItem, KioskInf
     /*//////////////////////////////////////////////////////////////////////////
     // Load and handle
     //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    protected PlayQueue buildPagePlayQueue(final List<StreamInfoItem> streams,
+                                           final int selectedIndex) {
+        // Unlike SinglePlayQueue, a kiosk queue remembers where this site's
+        // listing left off and continues fetching pages when the queue scrolls.
+        return new KioskPlayQueue(serviceId, url, currentNextPage, streams, selectedIndex);
+    }
 
     @Override
     public Single<KioskInfo> loadResult(final boolean forceReload) {
