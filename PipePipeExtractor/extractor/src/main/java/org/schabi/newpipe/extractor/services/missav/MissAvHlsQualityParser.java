@@ -99,7 +99,7 @@ public final class MissAvHlsQualityParser {
                 if (byHeight.size() >= MAX_VARIANTS) {
                     break;
                 }
-            } catch (final NumberFormatException | IllegalArgumentException ignored) {
+            } catch (final IllegalArgumentException ignored) {
                 // Ignore malformed or unsupported rendition metadata.
             }
         }
