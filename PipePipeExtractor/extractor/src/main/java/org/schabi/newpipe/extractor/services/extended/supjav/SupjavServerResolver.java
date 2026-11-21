@@ -27,21 +27,53 @@ final class SupjavServerResolver {
     static List<VideoStream> resolve(final Document detail, final String detailUrl) {
         final Map<String, VideoStream> found = new LinkedHashMap<>();
         addMedia(found, detail, "Direct");
-        int inspected = 0;
-        for (final Element item : detail.select(
+        final java.util.List<Element> entries = detail.select(
                 ".btn-server[data-link], .btnst a[data-link], .btns a[data-link], "
                 + "#server-list [data-link], .server-list [data-link], "
                 + ".servers [data-link], [data-server][data-link], "
-                + "iframe#video[src], #player-wrap iframe[src], iframe#player[src]")) {
-            if (++inspected > MAX_LINES) break;
+                + "iframe#video[src], #player-wrap iframe[src], iframe#player[src]");
+        final java.util.List<String> labels = new ArrayList<>();
+        for (final Element entry : entries) {
+            labels.add(serverName(entry));
+        }
+        // Many multi-CD pages list two identical consecutive sets of providers.
+        // Only assign inferred CD numbers when every set matches exactly.
+        int groupSize = 0;
+        for (int parts = 2; parts <= 10; parts++) {
+            if (entries.size() < 6 || entries.size() % parts != 0) continue;
+            final int size = entries.size() / parts;
+            if (size < 3 || size > 8) continue;
+            final java.util.Set<String> expected =
+                    new java.util.LinkedHashSet<>(labels.subList(0, size));
+            if (expected.size() != size) continue;
+            boolean match = true;
+            for (int part = 1; part < parts; part++) {
+                if (!expected.equals(new java.util.LinkedHashSet<>(
+                        labels.subList(part * size, (part + 1) * size)))) {
+                    match = false;
+                    break;
+                }
+            }
+            if (match) {
+                groupSize = size;
+                break;
+            }
+        }
+        int inspected = 0;
+        for (final Element item : entries) {
+            if (inspected >= 80) break;
+            final int position = inspected++;
+            final String name = labels.get(position);
+            final String explicitPart = readPart(item);
+            final String part = explicitPart != null ? explicitPart
+                    : groupSize > 0 ? "CD" + (position / groupSize + 1) : "Main";
+            final String sourceLabel = part + "|" + name;
             final String raw = item.hasAttr("data-link")
                     ? item.attr("data-link") : item.absUrl("src");
-            final String name = item.text().trim().isEmpty()
-                    ? "Player" : item.text().trim();
             final String link = resolveDeclaredUrl(raw, detailUrl);
             if (link == null) continue;
             if (isMedia(link)) {
-                add(found, link, name);
+                add(found, link, sourceLabel);
                 continue;
             }
             try {
@@ -57,7 +89,7 @@ final class SupjavServerResolver {
                 if (finalUrl != null && !safePublicHttps(finalUrl)) continue;
                 final Document player = org.jsoup.Jsoup.parse(response.responseBody(),
                         finalUrl == null ? link : finalUrl);
-                addMedia(found, player, name);
+                addMedia(found, player, sourceLabel);
                 // A Supjav wrapper commonly embeds a second provider page.
                 // Follow only a declared player frame, not unrelated ad frames.
                 int nested = 0;
@@ -79,7 +111,7 @@ final class SupjavServerResolver {
                         if (nestedUrl != null && !safePublicHttps(nestedUrl)) continue;
                         addMedia(found, org.jsoup.Jsoup.parse(
                                 nestedResponse.responseBody(),
-                                nestedUrl == null ? frameUrl : nestedUrl), name);
+                                nestedUrl == null ? frameUrl : nestedUrl), sourceLabel);
                     } catch (final Exception ignored) {
                         // Keep trying other explicitly declared player frames.
                     }
@@ -91,6 +123,25 @@ final class SupjavServerResolver {
         return new ArrayList<>(found.values());
     }
 
+    private static String serverName(final Element item) {
+        final String value = item.text().trim().isEmpty()
+                ? item.attr("data-server").trim() : item.text().trim();
+        final String result = value.replaceAll(
+                "(?i)\\\\b(?:CD|DISC|PART)[ _-]*[0-9]+\\\\b", "").trim();
+        return result.isEmpty() ? "Player" : result.split("\\\\s+")[0]
+                .toUpperCase(java.util.Locale.ROOT);
+    }
+
+    private static String readPart(final Element item) {
+        final String raw = item.attr("data-part") + " " + item.attr("data-cd")
+                + " " + item.text() + " "
+                + (item.parent() == null ? "" : item.parent().attr("data-part"));
+        final java.util.regex.Matcher matcher = java.util.regex.Pattern.compile(
+                "(?i)(?:^|[^a-z0-9])(?:CD|DISC|PART)[ _-]*0?([1-9][0-9]?)"
+        ).matcher(raw);
+        return matcher.find() ? "CD" + Integer.parseInt(matcher.group(1)) : null;
+    }
+
     private static void addMedia(final Map<String, VideoStream> out,
                                  final Document page, final String label) {
         for (final String url : Parser.media(page, true)) {
@@ -100,12 +151,12 @@ final class SupjavServerResolver {
 
     private static void add(final Map<String, VideoStream> out,
                             final String url, final String label) {
-        if (!safePublicHttps(url) || !isMedia(url) || out.containsKey(url)) return;
+        if (!safePublicHttps(url) || !isMedia(url) || out.containsKey(label + "|" + url)) return;
         final boolean hls = url.toLowerCase(java.util.Locale.ROOT)
                 .matches(".*\\.(?:m3u8|m3u)(?:[?#].*)?");
         final String quality = Parser.resolution(url);
-        out.put(url, new VideoStream.Builder()
-                .setId(label + " " + quality)
+        out.put(label + "|" + url, new VideoStream.Builder()
+                .setId("SUPJAV|" + label + "|" + quality)
                 .setContent(url, true)
                 .setResolution(quality)
                 .setMediaFormat(MediaFormat.MPEG_4)
