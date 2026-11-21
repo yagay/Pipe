@@ -21,6 +21,7 @@ import org.schabi.newpipe.extractor.exceptions.ExtractionException;
 import org.schabi.newpipe.extractor.services.missav.MissAvService;
 import org.schabi.newpipe.util.NavigationHelper;
 import org.schabi.newpipe.extractor.kiosk.KioskInfo;
+import org.schabi.newpipe.extractor.kiosk.SiteBrowseCatalog;
 import org.schabi.newpipe.extractor.linkhandler.ListLinkHandlerFactory;
 import org.schabi.newpipe.extractor.localization.ContentCountry;
 import org.schabi.newpipe.extractor.stream.StreamInfoItem;
@@ -147,27 +148,46 @@ public class KioskFragment extends BaseListInfoFragment<StreamInfoItem, KioskInf
     @Override
     protected void initViews(final View rootView, final Bundle savedInstanceState) {
         super.initViews(rootView, savedInstanceState);
-        final View header = rootView.findViewById(R.id.missav_browse_header);
-        if (header == null) {
-            return;
-        }
+        final View missAvHeader = rootView.findViewById(R.id.missav_browse_header);
+        final View universalHeader = rootView.findViewById(R.id.site_browse_header);
+        missAvHeader.setVisibility(View.GONE);
+        universalHeader.setVisibility(View.GONE);
+        final StreamingService currentService;
         try {
-            if (!(NewPipe.getService(serviceId) instanceof MissAvService)) {
-                header.setVisibility(View.GONE);
-                return;
-            }
+            currentService = NewPipe.getService(serviceId);
         } catch (final ExtractionException e) {
-            header.setVisibility(View.GONE);
             return;
         }
-        header.setVisibility(View.VISIBLE);
-        missAvBrowseHeader = new MissAvBrowseHeader(rootView, url, option -> {
-            if (option.url.equals(url)) {
-                return;
-            }
-            NavigationHelper.openMissAvBrowseFragment(getFM(), serviceId,
-                    option.url, option.label);
-        });
+        if (currentService instanceof MissAvService) {
+            missAvHeader.setVisibility(View.VISIBLE);
+            missAvBrowseHeader = new MissAvBrowseHeader(rootView, url, option -> {
+                if (!option.url.equals(url)) {
+                    NavigationHelper.openMissAvBrowseFragment(getFM(), serviceId,
+                            option.url, option.label);
+                }
+            });
+            return;
+        }
+
+        // Every other site uses the same presentation, but only for destinations
+        // which its own extractor has already registered as native kiosks.
+        try {
+            new SiteBrowseHeader(rootView, SiteBrowseCatalog.getEntries(currentService),
+                    kioskId, entry -> {
+                        if (!entry.getId().equals(kioskId)) {
+                            try {
+                                NavigationHelper.openKioskFragment(
+                                        getFM(), serviceId, entry.getId());
+                            } catch (final ExtractionException e) {
+                                showSnackBarError(new ErrorInfo(e, UserAction.UI_ERROR,
+                                        "Opening site browse page"));
+                            }
+                        }
+                    });
+        } catch (final ExtractionException e) {
+            showSnackBarError(new ErrorInfo(e, UserAction.UI_ERROR,
+                    "Building site navigation"));
+        }
     }
 
     @Override
