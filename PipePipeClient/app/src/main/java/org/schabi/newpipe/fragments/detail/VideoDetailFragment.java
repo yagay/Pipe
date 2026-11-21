@@ -1512,6 +1512,11 @@ public final class VideoDetailFragment
      * be reused in a few milliseconds and the flickering would be annoying.
      */
     private void hideMainPlayerOnLoadingNewStream() {
+        // Stop the current browser HLS session before navigating to another
+        // stream. ExoPlayer's stopForImmediateReusing() does not stop WebView.
+        if (player != null && player.isSupjavHlsActive()) {
+            player.stopSupjavHls();
+        }
         if (!isPlayerServiceAvailable()
                 || playerService.getView() == null
                 || !player.videoPlayerSelected()) {
