@@ -23,6 +23,16 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.media3.common.MediaItem;
+import androidx.media3.common.MimeTypes;
+import androidx.media3.common.PlaybackException;
+import androidx.media3.common.Player;
+import androidx.media3.datasource.DefaultHttpDataSource;
+import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
+import androidx.media3.ui.PlayerView;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.schabi.newpipe.diagnostics.DiagnosticLog;
 import org.schabi.newpipe.extractor.services.extended.supjav.SupjavServerCatalog;
@@ -44,6 +54,11 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
     private FrameLayout root;
     private LinearLayout content;
     private WebView browser;
+    private TextView nativeButton;
+    private volatile String observedManifest;
+    private volatile String observedReferer;
+    private ExoPlayer nativePlayer;
+    private PlayerView nativeView;
     private View fullscreen;
     private WebChromeClient.CustomViewCallback fullscreenCallback;
 
@@ -94,6 +109,15 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
         content.addView(back, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
 
+        nativeButton = new TextView(this);
+        nativeButton.setText("Native player · waiting for HLS");
+        nativeButton.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        nativeButton.setGravity(Gravity.CENTER);
+        nativeButton.setPadding(dp(12), 0, dp(12), 0);
+        nativeButton.setOnClickListener(v -> tryNativePlayback());
+        content.addView(nativeButton, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(40)));
+
         browser = new WebView(this);
         content.addView(browser, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
@@ -122,6 +146,26 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
                         || path.endsWith(".mp4") || path.endsWith(".m4s")
                         || path.endsWith(".ts")
                         || path.matches(".*/hls[0-9]*/(?:master|index|playlist)[^/]*\\.txt");
+                if (media) {
+                    final String refererForPlayback = request.getRequestHeaders().entrySet().stream()
+                            .filter(entry -> "Referer".equalsIgnoreCase(entry.getKey()))
+                            .map(Map.Entry::getValue).findFirst().orElse("");
+                    // Capture actual browser media requests; never generate media URLs
+                    // or replace their signed query parameters.
+                    final boolean manifest = path.endsWith(".m3u8") || path.endsWith(".m3u")
+                            || path.matches(".*/hls[0-9]*/(?:master|index|playlist)[^/]*\\.txt");
+                    if (manifest && "https".equalsIgnoreCase(address.getScheme())
+                            && refererForPlayback.startsWith("https://")
+                            && observedManifest == null) {
+                        observedManifest = address.toString();
+                        observedReferer = refererForPlayback;
+                        runOnUiThread(() -> {
+                            if (nativeButton != null) {
+                                nativeButton.setText("Try Pipe native player (HLS)");
+                            }
+                        });
+                    }
+                }
                 if (media && mediaRequestsSeen.getAndIncrement() < 16) {
                     final String referer = request.getRequestHeaders().entrySet().stream()
                             .filter(entry -> "Referer".equalsIgnoreCase(entry.getKey()))
@@ -308,11 +352,100 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
         selectedApplied = false;
         selectionStarted = false;
         mediaRequestsSeen.set(0);
+        observedManifest = null;
+        observedReferer = null;
+        releaseNativePlayer();
+        if (nativeButton != null) {
+            nativeButton.setText("Native player · waiting for HLS");
+        }
         selectionHandler.removeCallbacksAndMessages(null);
         if (browser != null) {
             browser.stopLoading();
             browser.loadUrl(nextPage);
         }
+    }
+
+    private void tryNativePlayback() {
+        final String manifest = observedManifest;
+        final String referer = observedReferer;
+        if (manifest == null || referer == null) {
+            Toast.makeText(this, "Waiting for a real HLS request from LUC",
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
+        releaseNativePlayer();
+        final Map<String, String> headers = new HashMap<>();
+        headers.put("Referer", referer);
+        headers.put("User-Agent", browser.getSettings().getUserAgentString());
+        // Media3 uses its own HTTP transport: only forward the session for the
+        // selected media origin. No cookie or token is written to diagnostics.
+        final String cookies = CookieManager.getInstance().getCookie(manifest);
+        if (cookies != null && !cookies.isEmpty()) headers.put("Cookie", cookies);
+        final DefaultHttpDataSource.Factory dataSource = new DefaultHttpDataSource.Factory()
+                .setDefaultRequestProperties(headers)
+                .setConnectTimeoutMs(12000)
+                .setReadTimeoutMs(20000);
+        nativePlayer = new ExoPlayer.Builder(this)
+                .setMediaSourceFactory(new DefaultMediaSourceFactory(dataSource))
+                .build();
+        nativeView = new PlayerView(this);
+        nativeView.setPlayer(nativePlayer);
+        nativeView.setUseController(true);
+        root.addView(nativeView, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        nativeView.bringToFront();
+        final TextView close = new TextView(this);
+        close.setText("‹  Return to browser player");
+        close.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        close.setBackgroundColor(0xCC111111);
+        close.setTextColor(0xFFFFFFFF);
+        close.setGravity(Gravity.CENTER);
+        close.setOnClickListener(v -> releaseNativePlayer());
+        final FrameLayout.LayoutParams closeParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(48), Gravity.TOP);
+        nativeView.addView(close, closeParams);
+        nativePlayer.addListener(new Player.Listener() {
+            @Override
+            public void onPlayerError(final PlaybackException error) {
+                final String errorCode = error.errorCodeName;
+                DiagnosticLog.event("SUPJAV_WEB", "NATIVE_HANDOFF_FAILED",
+                        "errorCode=" + errorCode + " mediaHost=" + Uri.parse(manifest).getHost());
+                Toast.makeText(SupjavWebPlayerActivity.this,
+                        "Native playback failed; browser playback is available",
+                        Toast.LENGTH_LONG).show();
+                releaseNativePlayer();
+            }
+
+            @Override
+            public void onPlaybackStateChanged(final int state) {
+                if (state == Player.STATE_READY) {
+                    DiagnosticLog.event("SUPJAV_WEB", "NATIVE_HANDOFF_READY",
+                            "mediaHost=" + Uri.parse(manifest).getHost());
+                    browser.onPause();
+                }
+            }
+        });
+        DiagnosticLog.event("SUPJAV_WEB", "NATIVE_HANDOFF_START",
+                "mediaHost=" + Uri.parse(manifest).getHost()
+                        + " refererHost=" + Uri.parse(referer).getHost());
+        nativePlayer.setMediaItem(new MediaItem.Builder()
+                .setUri(manifest)
+                .setMimeType(MimeTypes.APPLICATION_M3U8).build());
+        nativePlayer.prepare();
+        nativePlayer.play();
+    }
+
+    private void releaseNativePlayer() {
+        if (nativePlayer != null) {
+            nativePlayer.release();
+            nativePlayer = null;
+        }
+        if (nativeView != null) {
+            nativeView.setPlayer(null);
+            root.removeView(nativeView);
+            nativeView = null;
+        }
+        if (browser != null) browser.onResume();
     }
 
     private int dp(final int value) {
@@ -331,7 +464,9 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
 
     @Override
     public void onBackPressed() {
-        if (fullscreen != null) {
+        if (nativePlayer != null) {
+            releaseNativePlayer();
+        } else if (fullscreen != null) {
             hideFullScreen();
         } else if (browser != null && browser.canGoBack()) {
             browser.goBack();
@@ -355,6 +490,7 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         selectionHandler.removeCallbacksAndMessages(null);
+        releaseNativePlayer();
         DiagnosticLog.event("SUPJAV_WEB", "SESSION_END",
                 "mediaRequestsObserved=" + Math.min(mediaRequestsSeen.get(), 16));
         hideFullScreen();
