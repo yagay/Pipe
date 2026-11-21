@@ -93,6 +93,9 @@ import androidx.media3.exoplayer.source.TrackGroupArray;
 import androidx.media3.common.text.Cue;
 import androidx.media3.common.text.CueGroup;
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
+import androidx.media3.exoplayer.mediacodec.MediaCodecInfo;
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector;
+import androidx.media3.exoplayer.mediacodec.MediaCodecUtil;
 import androidx.media3.exoplayer.trackselection.MappingTrackSelector;
 import androidx.media3.ui.AspectRatioFrameLayout;
 import androidx.media3.ui.CaptionStyleCompat;
@@ -244,6 +247,13 @@ public final class Player implements
     // genuinely broken surface can't loop recover->fail forever.
     private static final long SURFACE_ERROR_RECOVERY_COOLDOWN_MS = 10_000;
     private long lastSurfaceErrorRecoveryMs;
+
+    // Standalone Supjav uses regular Media3. On a source whose High 10 H.264
+    // stream crashes a hardware decoder at runtime, retry only once with an
+    // available Android software AVC decoder, still using the same Media3
+    // player and preserving the original paginated play queue.
+    @Nullable private String supjavHigh10SoftwareAttemptedKey;
+    private boolean preferSupjavSoftwareAvc;
     // One-shot: the next reload is an audio-track switch and must seek to the saved position rather
     // than restart at 0. Scoped to the switch because that path pre-loads the SABR init metadata so
     // the cold seek maps correctly; other SABR restarts stay at 0 (see shouldSeek).
@@ -521,6 +531,23 @@ public final class Player implements
             renderFactory.forceDisableMediaCodecAsynchronousQueueing();
         }
         renderFactory.setEnableDecoderFallback(true);
+        // Media3's generic decoder fallback only applies to initialization
+        // failures. A High 10 AVC stream can initialize Qualcomm's decoder
+        // and fail later at queueInputBuffer (error 4003). This selector
+        // enables a one-shot *software-only AVC* retry when that exact
+        // format and failure have been observed; other codecs are untouched.
+        renderFactory.setMediaCodecSelector((mimeType, secure, tunneling) -> {
+            final List<MediaCodecInfo> available = MediaCodecSelector.DEFAULT
+                    .getDecoderInfos(mimeType, secure, tunneling);
+            if (!preferSupjavSoftwareAvc || !"video/avc".equals(mimeType)) {
+                return available;
+            }
+            final List<MediaCodecInfo> software = new ArrayList<>();
+            for (final MediaCodecInfo decoder : available) {
+                if (decoder.softwareOnly) software.add(decoder);
+            }
+            return software.isEmpty() ? available : software;
+        });
 
         videoResolver = new VideoPlaybackResolver(context, dataSource, getQualityResolver());
         audioResolver = new AudioPlaybackResolver(context, dataSource);
@@ -3237,6 +3264,9 @@ public final class Player implements
         }
 
         saveStreamProgressState();
+        if (maybeRetrySupjavHigh10WithSoftwareDecoder(error, failedSource)) {
+            return;
+        }
         boolean isCatchableException = false;
         final boolean sabrSessionInvalidated = error.getCause() != null
                 && error.getCause().getMessage() != null
@@ -3339,6 +3369,75 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
         if (fragmentListener != null) {
             fragmentListener.onPlayerError(error, isCatchableException);
         }
+    }
+
+    /**
+     * High 10 AVC is not guaranteed to be supported by Android hardware
+     * (e.g. OnePlus c2.qti.avc.decoder). Prefer software AVC only after an
+     * actual 4003 from this format. The standalone Supjav player does not
+     * change codecs; this is a guarded improvement, not a second player.
+     */
+    private boolean maybeRetrySupjavHigh10WithSoftwareDecoder(
+            @NonNull final PlaybackException error,
+            @Nullable final VideoStream failedSource) {
+        if (error.errorCode != ERROR_CODE_DECODING_FAILED
+                || failedSource == null || failedSource.getId() == null
+                || !failedSource.getId().startsWith("SUPJAV|")
+                || playQueue == null || playQueue.getItem() == null
+                || exoPlayerIsNull()) {
+            return false;
+        }
+
+        final String detail = String.valueOf(error.getMessage()).toLowerCase(Locale.ROOT);
+        final boolean high10 = detail.contains("avc1.6e")
+                || detail.contains("video/avc") && detail.contains("10bit");
+        if (!high10) return false;
+
+        final String key = playQueue.getItem().getUrl() + "|" + failedSource.getId();
+        if (key.equals(supjavHigh10SoftwareAttemptedKey)) {
+            DiagnosticLog.event("SUPJAV_PLAYER", "HIGH10_SOFTWARE_RETRY_EXHAUSTED",
+                    "source=" + failedSource.getId()
+                            + " reason=codec-incompatible-or-software-failed");
+            return false;
+        }
+        supjavHigh10SoftwareAttemptedKey = key;
+
+        boolean softwareAvailable = false;
+        try {
+            for (final MediaCodecInfo decoder : MediaCodecSelector.DEFAULT
+                    .getDecoderInfos("video/avc", false, false)) {
+                if (decoder.softwareOnly) {
+                    softwareAvailable = true;
+                    break;
+                }
+            }
+        } catch (final MediaCodecUtil.DecoderQueryException ignored) {
+            // Let normal player error handling explain this source failure.
+        }
+        if (!softwareAvailable) {
+            DiagnosticLog.event("SUPJAV_PLAYER", "HIGH10_SOFTWARE_UNAVAILABLE",
+                    "source=" + failedSource.getId() + " no-software-avc");
+            return false;
+        }
+
+        DiagnosticLog.event("SUPJAV_PLAYER", "HIGH10_SOFTWARE_RETRY_START",
+                "source=" + failedSource.getId()
+                        + " queueSize=" + playQueue.size());
+        preferSupjavSoftwareAvc = true;
+        // Single Media3 recreation with the existing queue and its selected CD.
+        // Do not open another Activity or a parallel WebView/HLS.js player.
+        final PlayQueue retained = playQueue;
+        final int repeatMode = getRepeatMode();
+        final float speed = getPlaybackSpeed();
+        final float pitch = getPlaybackPitch();
+        final boolean skipSilence = getPlaybackSkipSilence();
+        final boolean playWhenReady = simpleExoPlayer.getPlayWhenReady();
+        final boolean muted = isMuted();
+        setRecovery();
+        currentItem = null;
+        initPlayback(retained, repeatMode, speed, pitch, skipSilence,
+                playWhenReady, muted);
+        return true;
     }
 
     private void showMediaCodecWorkaroundHint(@NonNull final PlaybackException error) {
@@ -3975,6 +4074,9 @@ case ERROR_CODE_DECODER_INIT_FAILED: {
             // Changing only the provider inside a CD should retain progress.
             setRecovery();
         }
+        // A newly chosen CD/server starts on the normal hardware path.
+        // A previous High 10 software retry must not affect unrelated videos.
+        preferSupjavSoftwareAvc = false;
         DiagnosticLog.event("SUPJAV_PLAYER", "SINGLE_SOURCE_RELOAD",
                 "index=" + index + " discChanged=" + changingDisc
                         + " queueSize=" + playQueue.size());
