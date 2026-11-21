@@ -11,6 +11,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.CookieManager;
+import android.webkit.ConsoleMessage;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -23,15 +24,6 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.media3.common.MediaItem;
-import androidx.media3.common.MimeTypes;
-import androidx.media3.common.PlaybackException;
-import androidx.media3.common.Player;
-import androidx.media3.datasource.DefaultHttpDataSource;
-import androidx.media3.exoplayer.ExoPlayer;
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
-import androidx.media3.ui.PlayerView;
-import java.util.HashMap;
 import java.util.Map;
 
 import org.schabi.newpipe.diagnostics.DiagnosticLog;
@@ -54,11 +46,14 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
     private FrameLayout root;
     private LinearLayout content;
     private WebView browser;
-    private TextView nativeButton;
+    private TextView hlsButton;
     private volatile String observedManifest;
     private volatile String observedReferer;
-    private ExoPlayer nativePlayer;
-    private PlayerView nativeView;
+    private WebView embeddedHls;
+    private boolean embeddedReady;
+    private boolean embeddedAttempted;
+    private boolean allowAutoHls;
+    private final Handler hlsHandler = new Handler(Looper.getMainLooper());
     private View fullscreen;
     private WebChromeClient.CustomViewCallback fullscreenCallback;
 
@@ -109,14 +104,17 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
         content.addView(back, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
 
-        nativeButton = new TextView(this);
-        nativeButton.setText("Native player · waiting for HLS");
-        nativeButton.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-        nativeButton.setGravity(Gravity.CENTER);
-        nativeButton.setPadding(dp(12), 0, dp(12), 0);
-        nativeButton.setOnClickListener(v -> tryNativePlayback());
-        content.addView(nativeButton, new LinearLayout.LayoutParams(
+        hlsButton = new TextView(this);
+        hlsButton.setText("Website player · detecting HLS");
+        hlsButton.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        hlsButton.setGravity(Gravity.CENTER);
+        hlsButton.setPadding(dp(12), 0, dp(12), 0);
+        hlsButton.setOnClickListener(v -> startEmbeddedHls(false));
+        content.addView(hlsButton, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(40)));
+        allowAutoHls = selectedServer >= 0
+                && SupjavServerCatalog.selectedProviderIs(
+                        SupjavServerCatalog.selectedUrl(url, selectedServer), "LUC");
 
         browser = new WebView(this);
         content.addView(browser, new LinearLayout.LayoutParams(
@@ -160,8 +158,11 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
                         observedManifest = address.toString();
                         observedReferer = refererForPlayback;
                         runOnUiThread(() -> {
-                            if (nativeButton != null) {
-                                nativeButton.setText("Try Pipe native player (HLS)");
+                            if (hlsButton != null) {
+                                hlsButton.setText("Play with built-in HLS controls");
+                            }
+                            if (allowAutoHls && !embeddedAttempted) {
+                                startEmbeddedHls(true);
                             }
                         });
                     }
@@ -354,9 +355,12 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
         mediaRequestsSeen.set(0);
         observedManifest = null;
         observedReferer = null;
-        releaseNativePlayer();
-        if (nativeButton != null) {
-            nativeButton.setText("Native player · waiting for HLS");
+        closeEmbeddedHls();
+        embeddedAttempted = false;
+        allowAutoHls = SupjavServerCatalog.selectedProviderIs(
+                SupjavServerCatalog.selectedUrl(nextPage, nextServer), "LUC");
+        if (hlsButton != null) {
+            hlsButton.setText("Website player · detecting HLS");
         }
         selectionHandler.removeCallbacksAndMessages(null);
         if (browser != null) {
@@ -365,85 +369,109 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
         }
     }
 
-    private void tryNativePlayback() {
+    /**
+     * All HLS-capable Supjav lines use the same browser renderer. Keep the
+     * provider page alive for fallback when a new document loses session state.
+     */
+    private void startEmbeddedHls(final boolean automatic) {
         final String manifest = observedManifest;
         final String referer = observedReferer;
-        if (manifest == null || referer == null) {
-            Toast.makeText(this, "Waiting for a real HLS request from LUC",
-                    Toast.LENGTH_SHORT).show();
+        if (embeddedHls != null || manifest == null || referer == null
+                || browser == null) {
+            if (!automatic && manifest == null) {
+                Toast.makeText(this, "Waiting for a real HLS request",
+                        Toast.LENGTH_SHORT).show();
+            }
             return;
         }
-        releaseNativePlayer();
-        final Map<String, String> headers = new HashMap<>();
-        headers.put("Referer", referer);
-        headers.put("User-Agent", browser.getSettings().getUserAgentString());
-        // Media3 uses its own HTTP transport: only forward the session for the
-        // selected media origin. No cookie or token is written to diagnostics.
-        final String cookies = CookieManager.getInstance().getCookie(manifest);
-        if (cookies != null && !cookies.isEmpty()) headers.put("Cookie", cookies);
-        final DefaultHttpDataSource.Factory dataSource = new DefaultHttpDataSource.Factory()
-                .setDefaultRequestProperties(headers)
-                .setConnectTimeoutMs(12000)
-                .setReadTimeoutMs(20000);
-        nativePlayer = new ExoPlayer.Builder(this)
-                .setMediaSourceFactory(new DefaultMediaSourceFactory(dataSource))
-                .build();
-        nativeView = new PlayerView(this);
-        nativeView.setPlayer(nativePlayer);
-        nativeView.setUseController(true);
-        root.addView(nativeView, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        nativeView.bringToFront();
-        final TextView close = new TextView(this);
-        close.setText("‹  Return to browser player");
-        close.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-        close.setBackgroundColor(0xCC111111);
-        close.setTextColor(0xFFFFFFFF);
-        close.setGravity(Gravity.CENTER);
-        close.setOnClickListener(v -> releaseNativePlayer());
-        final FrameLayout.LayoutParams closeParams = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(48), Gravity.TOP);
-        nativeView.addView(close, closeParams);
-        nativePlayer.addListener(new Player.Listener() {
+        if (!"https".equalsIgnoreCase(Uri.parse(manifest).getScheme())
+                || !"https".equalsIgnoreCase(Uri.parse(referer).getScheme())
+                || Uri.parse(referer).getHost() == null) return;
+        embeddedAttempted = true;
+        embeddedReady = false;
+        final WebView player = new WebView(this);
+        embeddedHls = player;
+        player.setBackgroundColor(android.graphics.Color.BLACK);
+        final WebSettings settings = player.getSettings();
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setMediaPlaybackRequiresUserGesture(false);
+        settings.setAllowContentAccess(false);
+        settings.setAllowFileAccess(false);
+        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+        settings.setUserAgentString(browser.getSettings().getUserAgentString());
+        CookieManager.getInstance().setAcceptThirdPartyCookies(player, true);
+        player.setWebViewClient(new WebViewClient() {
             @Override
-            public void onPlayerError(final PlaybackException error) {
-                final String errorCode = error.getErrorCodeName();
-                DiagnosticLog.event("SUPJAV_WEB", "NATIVE_HANDOFF_FAILED",
-                        "errorCode=" + errorCode + " mediaHost=" + Uri.parse(manifest).getHost());
-                Toast.makeText(SupjavWebPlayerActivity.this,
-                        "Native playback failed; browser playback is available",
-                        Toast.LENGTH_LONG).show();
-                releaseNativePlayer();
-            }
-
-            @Override
-            public void onPlaybackStateChanged(final int state) {
-                if (state == Player.STATE_READY) {
-                    DiagnosticLog.event("SUPJAV_WEB", "NATIVE_HANDOFF_READY",
-                            "mediaHost=" + Uri.parse(manifest).getHost());
-                    browser.onPause();
+            public void onReceivedHttpError(final WebView view,
+                                            final WebResourceRequest request,
+                                            final WebResourceResponse response) {
+                if (response.getStatusCode() >= 400) {
+                    DiagnosticLog.event("SUPJAV_HLS", "HTTP_ERROR",
+                            "host=" + request.getUrl().getHost()
+                                    + " status=" + response.getStatusCode());
                 }
             }
         });
-        DiagnosticLog.event("SUPJAV_WEB", "NATIVE_HANDOFF_START",
+        player.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onConsoleMessage(final ConsoleMessage message) {
+                final String code = message.message();
+                if (code == null || !code.startsWith("PIPE_HLS:")) return false;
+                final String state = code.substring("PIPE_HLS:".length());
+                // Never log media URLs, tokens, or script arguments.
+                DiagnosticLog.event("SUPJAV_HLS", "STATE", "state=" + state);
+                if (player != embeddedHls) return true;
+                if ("READY".equals(state)) {
+                    embeddedReady = true;
+                } else if ("PLAYING".equals(state)) {
+                    embeddedReady = true;
+                    browser.onPause();
+                } else if (state.startsWith("ERROR:")) {
+                    hlsHandler.post(() -> {
+                        if (player == embeddedHls) closeEmbeddedHls();
+                    });
+                }
+                return true;
+            }
+        });
+        root.addView(player, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        player.bringToFront();
+        final TextView close = new TextView(this);
+        close.setText("‹  Website player");
+        close.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        close.setTextColor(0xFFFFFFFF);
+        close.setBackgroundColor(0xCC111111);
+        close.setGravity(Gravity.CENTER);
+        close.setOnClickListener(v -> closeEmbeddedHls());
+        player.addView(close, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(48), Gravity.TOP));
+        DiagnosticLog.event("SUPJAV_HLS", "START",
                 "mediaHost=" + Uri.parse(manifest).getHost()
-                        + " refererHost=" + Uri.parse(referer).getHost());
-        nativePlayer.setMediaItem(new MediaItem.Builder()
-                .setUri(manifest)
-                .setMimeType(MimeTypes.APPLICATION_M3U8).build());
-        nativePlayer.prepare();
-        nativePlayer.play();
+                        + " refererHost=" + Uri.parse(referer).getHost()
+                        + " automatic=" + automatic);
+        player.loadDataWithBaseURL(referer,
+                SupjavBrowserHlsDocument.render(manifest), "text/html", "UTF-8", null);
+        hlsHandler.postDelayed(() -> {
+            if (embeddedHls == player && !embeddedReady) {
+                DiagnosticLog.event("SUPJAV_HLS", "TIMEOUT", "no playable manifest");
+                closeEmbeddedHls();
+            }
+        }, 18000);
     }
 
-    private void releaseNativePlayer() {
-        if (nativePlayer != null) {
-            nativePlayer.release();
-            nativePlayer = null;
-        }
-        if (nativeView != null) {
-            nativeView.setPlayer(null);
-            root.removeView(nativeView);
-            nativeView = null;
+    private void closeEmbeddedHls() {
+        hlsHandler.removeCallbacksAndMessages(null);
+        final WebView player = embeddedHls;
+        embeddedHls = null;
+        embeddedReady = false;
+        if (player != null) {
+            player.onPause();
+            player.stopLoading();
+            player.loadUrl("about:blank");
+            if (root != null) root.removeView(player);
+            player.destroy();
         }
         if (browser != null) browser.onResume();
     }
@@ -464,8 +492,8 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
 
     @Override
     public void onBackPressed() {
-        if (nativePlayer != null) {
-            releaseNativePlayer();
+        if (embeddedHls != null) {
+            closeEmbeddedHls();
         } else if (fullscreen != null) {
             hideFullScreen();
         } else if (browser != null && browser.canGoBack()) {
@@ -479,18 +507,20 @@ public final class SupjavWebPlayerActivity extends AppCompatActivity {
     protected void onPause() {
         super.onPause();
         if (browser != null) browser.onPause();
+        if (embeddedHls != null) embeddedHls.onPause();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        if (browser != null) browser.onResume();
+        if (browser != null && embeddedHls == null) browser.onResume();
+        if (embeddedHls != null) embeddedHls.onResume();
     }
 
     @Override
     protected void onDestroy() {
         selectionHandler.removeCallbacksAndMessages(null);
-        releaseNativePlayer();
+        closeEmbeddedHls();
         DiagnosticLog.event("SUPJAV_WEB", "SESSION_END",
                 "mediaRequestsObserved=" + Math.min(mediaRequestsSeen.get(), 16));
         hideFullScreen();
