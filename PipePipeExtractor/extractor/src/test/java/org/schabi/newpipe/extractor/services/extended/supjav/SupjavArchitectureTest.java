@@ -120,6 +120,28 @@ public final class SupjavArchitectureTest {
     }
 
     @Test
+    public void lucNativeProbePolicyIsCarriedWithoutChangingSignedMediaUrl() {
+        final SupjavServerCatalog.Entry luc = new SupjavServerCatalog.Entry(
+                0, "Main", "LUC", "sample", DETAIL);
+        final String html = "<script>var sources={"
+                + "hls3:'https://cdn.example.com/hls3/master.txt?key=c',"
+                + "hls4:'https://cdn.example.com/hls4/master.txt?key=b',"
+                + "hls2:'https://cdn.example.com/hls2/master.m3u8?key=a'};</script>";
+        final List<VideoStream> candidates = SupjavProviderExtractor.extract(
+                Jsoup.parse(html, "https://player.example/e/sample"), luc);
+        assertEquals(3, candidates.size());
+        final VideoStream original = candidates.get(0);
+        final VideoStream withoutOrigin = SupjavProviderExtractor.withNativeOriginPolicy(
+                original, false);
+        assertTrue(withoutOrigin.getContent().contains("/hls2/master.m3u8?key=a"));
+        assertTrue(withoutOrigin.getContent().endsWith("&origin=0"));
+        assertEquals(original.getId(), withoutOrigin.getId());
+        assertEquals(original.getDeliveryMethod(), withoutOrigin.getDeliveryMethod());
+        assertEquals(original.getResolution(), withoutOrigin.getResolution());
+        assertSame(original, SupjavProviderExtractor.withNativeOriginPolicy(original, true));
+    }
+
+    @Test
     public void voeRedirectsOnlyFollowDeclaredPlayerAndIgnoreGenericScripts() {
         final SupjavServerCatalog.Entry entry = new SupjavServerCatalog.Entry(
                 0, "Main", "VOE", "sample", DETAIL);
