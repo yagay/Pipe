@@ -59,6 +59,8 @@ public final class SupjavHlsEngine {
     private boolean attempted;
     private boolean ready;
     private boolean failed;
+    private boolean pendingPlay;
+    private boolean pauseRequested;
     private long lastPositionMs = -1;
     private long lastProgressLogUptime;
     private String page;
@@ -257,7 +259,8 @@ public final class SupjavHlsEngine {
         listener.onStatus("正在启动 HLS…");
         player = new WebView(surface.getContext());
         player.setBackgroundColor(0xFF000000);
-        player.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        // Use WebView's default compositor (like the working Supjav app).
+        // A forced hardware layer can interfere with video surface rendering.
         final WebSettings settings = player.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
@@ -314,6 +317,7 @@ public final class SupjavHlsEngine {
                     DiagnosticLog.event("SUPJAV_ENGINE", "VIDEO_READY",
                             "decoded video data available");
                     listener.onReady();
+                    dispatchPendingTransport();
                 } else if ("PLAYING".equals(state)) {
                     ready = true;
                     DiagnosticLog.event("SUPJAV_ENGINE", "VIDEO_PLAYING",
@@ -334,6 +338,23 @@ public final class SupjavHlsEngine {
                     DiagnosticLog.event("SUPJAV_ENGINE", "AUTOPLAY_RESTRICTED",
                             "manual play is available in the Pipe controls");
                     listener.onStatus("点击播放按钮继续");
+                } else if (state.startsWith("PLAY_REJECTED:")) {
+                    // Reason names, never URL or exception messages, cross
+                    // the JavaScript bridge.
+                    DiagnosticLog.event("SUPJAV_ENGINE", "PLAY_REJECTED",
+                            "reason=" + state.substring(14));
+                } else if (state.startsWith("PLAY_ATTEMPT:")) {
+                    DiagnosticLog.event("SUPJAV_ENGINE", "PLAY_ATTEMPT",
+                            "stage=" + state.substring(13));
+                } else if ("MANIFEST_PARSED".equals(state)) {
+                    DiagnosticLog.event("SUPJAV_ENGINE", "WEB_STATE",
+                            "state=MANIFEST_PARSED");
+                    if (pauseRequested) {
+                        // A lifecycle pause may arrive while HLS is still
+                        // preparing; enforce it once JS is actually available.
+                        player.evaluateJavascript(
+                                "(function(){window.PipeHls&&window.PipeHls.pause();})()", null);
+                    }
                 } else if (state.startsWith("NETWORK_DIAG:")) {
                     // Provider URLs are never reported. Codes are short,
                     // predefined HLS.js error details and HTTP status only.
@@ -396,8 +417,8 @@ public final class SupjavHlsEngine {
         // JS reports missing fragments/frames at 30 seconds. The native
         // deadline is longer so it does not wrongly abort slow first segments.
         main.postDelayed(() -> {
-            if (generation == active && !ready) fail("no-decoded-video-after-35s");
-        }, 35000);
+            if (generation == active && !ready) fail("no-decoded-video-after-80s");
+        }, 80000);
     }
 
     private void fail(final String reason) {
@@ -409,12 +430,34 @@ public final class SupjavHlsEngine {
     }
 
     public void command(final String safeCommand) {
+        if (!safeCommand.matches(
+                "(?:toggle\\(\\)|play\\(\\)|pause\\(\\)|cycleQuality\\(\\)|quality\\(-?[0-9]+\\)|seek\\(-?[0-9]+\\)|seekFraction\\([0-9.]+\\)|speed\\([0-9.]+\\))")) {
+            return;
+        }
         final boolean manualPlay = "play()".equals(safeCommand)
                 || "toggle()".equals(safeCommand);
-        if (player != null && (ready || manualPlay) && safeCommand.matches(
-                "(?:toggle\\(\\)|play\\(\\)|pause\\(\\)|cycleQuality\\(\\)|quality\\(-?[0-9]+\\)|seek\\(-?[0-9]+\\)|seekFraction\\([0-9.]+\\)|speed\\([0-9.]+\\))")) {
+        if ("pause()".equals(safeCommand)) {
+            pauseRequested = true;
+            pendingPlay = false;
+        } else if (manualPlay) {
+            pauseRequested = false;
+            if (!ready) pendingPlay = true;
+        }
+        if (player != null && (ready || manualPlay || "pause()".equals(safeCommand))) {
             player.evaluateJavascript("(function(){if(window.PipeHls)window.PipeHls."
                     + safeCommand + ";})()", null);
+        }
+    }
+
+    private void dispatchPendingTransport() {
+        if (player == null) return;
+        if (pauseRequested) {
+            player.evaluateJavascript(
+                    "(function(){window.PipeHls&&window.PipeHls.pause();})()", null);
+        } else if (pendingPlay) {
+            pendingPlay = false;
+            player.evaluateJavascript(
+                    "(function(){window.PipeHls&&window.PipeHls.play();})()", null);
         }
     }
 
@@ -423,6 +466,8 @@ public final class SupjavHlsEngine {
         main.removeCallbacksAndMessages(null);
         ready = false;
         failed = false;
+        pendingPlay = false;
+        pauseRequested = false;
         lastPositionMs = -1;
         lastProgressLogUptime = 0;
         attempted = false;
