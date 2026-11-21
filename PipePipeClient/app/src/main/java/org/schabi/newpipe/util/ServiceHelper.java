@@ -313,6 +313,7 @@ public final class ServiceHelper {
             case "Hanime1.me":
             case "JAV-FUN.cc":
             case "Internet Archive":
+            case "Supjav":
                 return false;
             default:
                 return true;
