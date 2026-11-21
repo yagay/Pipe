@@ -2,6 +2,7 @@ package org.schabi.newpipe.extractor.services.extended.supjav;
 
 import org.schabi.newpipe.extractor.NewPipe;
 import org.schabi.newpipe.extractor.downloader.Response;
+import org.schabi.newpipe.extractor.downloader.StreamingResponse;
 import org.schabi.newpipe.extractor.stream.DeliveryMethod;
 import org.schabi.newpipe.extractor.stream.VideoStream;
 
@@ -79,8 +80,10 @@ final class SupjavMediaProbe {
 
     private static ProbeResult checkHls(final String url,
                                         final Map<String, List<String>> headers) {
-        try {
-            final Response response = NewPipe.getDownloader().get(url, headers);
+        // Only read the first 8 KiB, even when the server ignores Range and
+        // sends a massive body. Always close the connection after the probe.
+        try (StreamingResponse response =
+                     NewPipe.getDownloader().getStreaming(url, headers)) {
             final int code = response.responseCode();
             if (code == 403 || code == 404 || code == 410 || code == 429) {
                 return new ProbeResult(Status.BLOCKED, code);
@@ -92,9 +95,17 @@ final class SupjavMediaProbe {
                     .contains("application/json"))) {
                 return new ProbeResult(Status.BLOCKED, code);
             }
-            final String body = response.responseBody();
-            final String head = body.substring(0, Math.min(body.length(), 64))
-                    .replace("\uFEFF", "").trim();
+            final byte[] prefix = new byte[8192];
+            int count = 0;
+            while (count < prefix.length) {
+                final int n = response.body().read(prefix, count, prefix.length - count);
+                if (n <= 0) break;
+                count += n;
+                if (count >= 24) break; // Enough to recognize an HLS manifest.
+            }
+            final String text = new String(prefix, 0, count,
+                    java.nio.charset.StandardCharsets.UTF_8);
+            final String head = text.replace("\uFEFF", "").trim();
             return new ProbeResult(head.startsWith("#EXTM3U")
                     ? Status.PLAYABLE : Status.BLOCKED, code);
         } catch (final Exception ignored) {
