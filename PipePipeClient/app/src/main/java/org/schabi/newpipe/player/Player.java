@@ -557,6 +557,8 @@ public final class Player implements
         binding.playbackCurrentTime.setText("0:00");
         binding.playbackEndTime.setText("0:00");
         binding.titleTextView.setText("Supjav");
+        binding.qualityTextView.setVisibility(View.VISIBLE);
+        binding.playbackSpeed.setVisibility(View.VISIBLE);
         binding.playPreviousButton.setVisibility(View.INVISIBLE);
         binding.playNextButton.setVisibility(View.INVISIBLE);
         binding.queueButton.setVisibility(View.GONE);
@@ -700,8 +702,13 @@ public final class Player implements
     }
 
     private void initListeners() {
-        binding.qualityTextView.setOnClickListener(
-                new QualityClickListener(this, qualityPopupMenu));
+        binding.qualityTextView.setOnClickListener(v -> {
+            if (supjavHlsEngine != null) {
+                supjavHlsEngine.command("cycleQuality()");
+            } else {
+                new QualityClickListener(this, qualityPopupMenu).onClick(v);
+            }
+        });
         binding.playbackSpeed.setOnClickListener(v -> {
             if (supjavHlsEngine == null) {
                 new PlaybackSpeedClickListener(this, playbackSpeedPopupMenu).onClick(v);
