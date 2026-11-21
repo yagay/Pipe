@@ -1099,8 +1099,7 @@ public final class VideoDetailFragment
                                 .setPositiveButton("Other servers",
                                         (dialog, which) -> showSupjavServerPicker())
                                 .setNeutralButton("Open website", (dialog, which) ->
-                                        SupjavWebPlayerActivity.open(requireContext(),
-                                                SupjavServerCatalog.pageUrl(url)))
+                                        SupjavWebPlayerActivity.open(requireContext(), url))
                                 .setNegativeButton(android.R.string.cancel, null)
                                 .show();
                     }
@@ -1624,8 +1623,7 @@ public final class VideoDetailFragment
                                 .setTitle("Supjav")
                                 .setMessage("No server entries on this video page.")
                                 .setPositiveButton("Open website", (dialog, which) ->
-                                        SupjavWebPlayerActivity.open(requireContext(),
-                                                SupjavServerCatalog.pageUrl(detailUrl)))
+                                        SupjavWebPlayerActivity.open(requireContext(), detailUrl))
                                 .setNegativeButton(android.R.string.cancel, null).show();
                         return;
                     }
@@ -1644,8 +1642,7 @@ public final class VideoDetailFragment
                                         navigateToSupjavServer(detailUrl, entries.get(position));
                                     })
                             .setNeutralButton("Open website", (dialog, which) ->
-                                    SupjavWebPlayerActivity.open(requireContext(),
-                                                SupjavServerCatalog.pageUrl(detailUrl)))
+                                    SupjavWebPlayerActivity.open(requireContext(), detailUrl))
                             .setNegativeButton(android.R.string.cancel, null)
                             .show();
                 }, error -> {
