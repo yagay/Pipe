@@ -57,6 +57,14 @@ final class SupjavServerResolver {
         // after an actual media probe succeeds. A plausible signed URL is not
         // sufficient when its host rejects native HTTP with 403.
         final boolean luc = "LUC".equalsIgnoreCase(selected.provider);
+        if (luc) {
+            // The app's offscreen browser has already checked this exact LUC
+            // source using the provider frame's actual HTTP context.
+            final VideoStream browserVerified = SupjavLucNativeCache.find(selected);
+            if (browserVerified != null) {
+                return Collections.singletonList(browserVerified);
+            }
+        }
         final int probeLimit = luc ? MAX_CANDIDATES : MAX_PROBES;
         final String start = SupjavProviderExtractor.resolveDeclaredUrl(selected.link, detailUrl);
         if (start == null) {
