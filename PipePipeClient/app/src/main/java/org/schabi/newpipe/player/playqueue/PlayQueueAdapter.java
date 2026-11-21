@@ -56,6 +56,7 @@ public class PlayQueueAdapter extends RecyclerView.Adapter<RecyclerView.ViewHold
     private final PlayQueueItemBuilder playQueueItemBuilder;
     private final PlayQueue playQueue;
     private boolean showFooter = false;
+    private boolean gridMode = false;
     private View footer = null;
 
     private Disposable playQueueReactor;
@@ -111,7 +112,9 @@ public class PlayQueueAdapter extends RecyclerView.Adapter<RecyclerView.ViewHold
                 break;
             case APPEND:
                 final AppendEvent appendEvent = (AppendEvent) message;
-                notifyItemRangeInserted(playQueue.size(), appendEvent.getAmount());
+                notifyItemRangeInserted(
+                        Math.max(0, playQueue.size() - appendEvent.getAmount()),
+                        appendEvent.getAmount());
                 break;
             case ERROR:
                 final ErrorEvent errorEvent = (ErrorEvent) message;
@@ -133,6 +136,18 @@ public class PlayQueueAdapter extends RecyclerView.Adapter<RecyclerView.ViewHold
                 notifyDataSetChanged();
                 break;
         }
+    }
+
+    /** Use homepage-style cards only in the video playback queue. */
+    public void setGridMode(final boolean enabled) {
+        if (gridMode != enabled) {
+            gridMode = enabled;
+            notifyDataSetChanged();
+        }
+    }
+
+    public boolean isFooterPosition(final int position) {
+        return footer != null && showFooter && position == playQueue.size();
     }
 
     public void dispose() {
@@ -191,7 +206,8 @@ public class PlayQueueAdapter extends RecyclerView.Adapter<RecyclerView.ViewHold
                 return new HFHolder(footer);
             case ITEM_VIEW_TYPE_ID:
                 return new PlayQueueItemHolder(LayoutInflater.from(parent.getContext())
-                        .inflate(R.layout.play_queue_item, parent, false));
+                        .inflate(gridMode ? R.layout.play_queue_item_grid
+                                : R.layout.play_queue_item, parent, false));
             default:
                 Log.e(TAG, "Attempting to create view holder with undefined type: " + type);
                 return new FallbackViewHolder(new View(parent.getContext()));
