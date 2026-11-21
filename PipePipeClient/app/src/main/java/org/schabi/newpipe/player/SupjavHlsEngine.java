@@ -73,8 +73,15 @@ public final class SupjavHlsEngine {
         surface.setVisibility(View.VISIBLE);
         surface.setBackgroundColor(0xFF000000);
         resolver = new WebView(surface.getContext());
+        // The provider's iframe must have a real viewport so its media
+        // request lifecycle is not suppressed by tiny/offscreen rendering.
+        // It stays visually transparent and below the video and Pipe controls.
         resolver.setAlpha(0.01f);
-        surface.addView(resolver, new FrameLayout.LayoutParams(2, 2));
+        resolver.setClickable(false);
+        resolver.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+        surface.addView(resolver, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT));
         final WebSettings settings = resolver.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
