@@ -8,6 +8,7 @@ import com.grack.nanojson.JsonParserException;
 import okhttp3.*;
 import okhttp3.dnsoverhttps.DnsOverHttps;
 import org.schabi.newpipe.error.ReCaptchaActivity;
+import org.schabi.newpipe.diagnostics.DiagnosticLog;
 import org.schabi.newpipe.extractor.downloader.CancellableCall;
 import org.schabi.newpipe.extractor.downloader.Downloader;
 import org.schabi.newpipe.extractor.downloader.Request;
@@ -320,6 +321,7 @@ public final class DownloaderImpl extends Downloader {
             try {
                 response = tmpClient.newCall(requestBuilder.build()).execute();
             } catch (UnknownHostException e) {
+                DiagnosticLog.error("NETWORK", "DNS_FAILURE", e, "attempt=" + retryCount);
                 retryCount++;
                 if (retryCount <= maxRetries) {
                     System.err.println("DNS lookup failed. Retrying (attempt " + retryCount + ")...");
@@ -337,10 +339,14 @@ public final class DownloaderImpl extends Downloader {
         }
 
         if(response == null) {
+            DiagnosticLog.event("NETWORK", "RETRIES_EXHAUSTED", "attempts=" + retryCount);
             throw new IOException("Failed to execute request. We retried " + retryCount + " times.");
         }
 
 
+        if (response.code() >= 400) {
+            DiagnosticLog.event("NETWORK", "HTTP_" + response.code(), "method=" + httpMethod);
+        }
         if (response.code() == 429) {
             response.close();
 
