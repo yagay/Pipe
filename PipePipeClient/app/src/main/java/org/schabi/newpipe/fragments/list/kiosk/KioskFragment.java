@@ -58,6 +58,7 @@ import io.reactivex.rxjava3.core.Single;
 
 public class KioskFragment extends BaseListInfoFragment<StreamInfoItem, KioskInfo> {
     private MissAvBrowseHeader missAvBrowseHeader;
+    private SiteBrowseHeader siteBrowseHeader;
     String kioskId = "";
     String kioskTranslatedName;
     ContentCountry contentCountry;
@@ -89,6 +90,15 @@ public class KioskFragment extends BaseListInfoFragment<StreamInfoItem, KioskInf
         final KioskFragment instance = new KioskFragment();
         instance.setInitialData(sid, categoryUrl, title);
         instance.kioskId = title;
+        return instance;
+    }
+
+    public static KioskFragment getSiteCategoryInstance(final int siteId,
+                                                        final String pageUrl,
+                                                        final String categoryName) {
+        final KioskFragment instance = new KioskFragment();
+        instance.setInitialData(siteId, pageUrl, categoryName);
+        instance.kioskId = "category:" + pageUrl;
         return instance;
     }
 
@@ -152,6 +162,7 @@ public class KioskFragment extends BaseListInfoFragment<StreamInfoItem, KioskInf
         final View universalHeader = rootView.findViewById(R.id.site_browse_header);
         missAvHeader.setVisibility(View.GONE);
         universalHeader.setVisibility(View.GONE);
+        rootView.findViewById(R.id.site_browse_container).setVisibility(View.GONE);
         final StreamingService currentService;
         try {
             currentService = NewPipe.getService(serviceId);
@@ -172,13 +183,25 @@ public class KioskFragment extends BaseListInfoFragment<StreamInfoItem, KioskInf
         // Every other site uses the same presentation, but only for destinations
         // which its own extractor has already registered as native kiosks.
         try {
-            new SiteBrowseHeader(rootView, SiteBrowseCatalog.getEntries(currentService),
-                    kioskId, entry -> {
-                        if (!entry.getId().equals(kioskId)) {
-                            try {
-                                NavigationHelper.openKioskFragment(
-                                        getFM(), serviceId, entry.getId());
-                            } catch (final ExtractionException e) {
+            siteBrowseHeader = new SiteBrowseHeader(rootView,
+                    SiteBrowseCatalog.getEntries(currentService), currentService, kioskId,
+                    entry -> {
+                        if (entry.getId().equals(kioskId)) {
+                            return;
+                        }
+                        if (entry.getId().startsWith("category:")) {
+                            NavigationHelper.openSiteCategoryFragment(getFM(), serviceId,
+                                    entry.getUrl(), entry.getLabel());
+                            return;
+                        }
+                        try {
+                            NavigationHelper.openKioskFragment(getFM(), serviceId, entry.getId());
+                        } catch (final ExtractionException e) {
+                            showSnackBarError(new ErrorInfo(e, UserAction.UI_ERROR,
+                                    "Opening site browse page"));
+                        }
+                    });
+        } catch (final ExtractionException e) {
                                 showSnackBarError(new ErrorInfo(e, UserAction.UI_ERROR,
                                         "Opening site browse page"));
                             }
@@ -192,6 +215,10 @@ public class KioskFragment extends BaseListInfoFragment<StreamInfoItem, KioskInf
 
     @Override
     public void onDestroyView() {
+        if (siteBrowseHeader != null) {
+            siteBrowseHeader.dispose();
+            siteBrowseHeader = null;
+        }
         if (missAvBrowseHeader != null) {
             missAvBrowseHeader.dispose();
             missAvBrowseHeader = null;
