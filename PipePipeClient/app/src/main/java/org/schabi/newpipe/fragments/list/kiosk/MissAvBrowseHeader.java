@@ -16,6 +16,7 @@ import androidx.annotation.NonNull;
 
 import org.schabi.newpipe.R;
 import org.schabi.newpipe.extractor.services.missav.MissAvBrowseCatalog;
+import org.schabi.newpipe.extractor.services.missav.MissAvParsingHelper;
 
 import java.util.Collections;
 import java.util.List;
@@ -42,6 +43,8 @@ final class MissAvBrowseHeader {
     private int expandedGroup = -1;
     private boolean loadingCategories;
     private boolean categoryLoadFailed;
+    private boolean optionLoadFailed;
+    private boolean loadingOptions;
     private List<MissAvBrowseCatalog.Entry> currentFilters = Collections.emptyList();
     private List<MissAvBrowseCatalog.Entry> currentSorts = Collections.emptyList();
     private TextView[] headings = new TextView[MissAvBrowseCatalog.GROUPS.length];
@@ -62,17 +65,7 @@ final class MissAvBrowseHeader {
         renderToolbar("Categories", Collections.emptyList(), Collections.emptyList());
         reloadCategories(false);
 
-        subscriptions.add(Single.fromCallable(() ->
-                        MissAvBrowseCatalog.getPageOptions(pageUrl))
-                .subscribeOn(Schedulers.io())
-                .observeOn(AndroidSchedulers.mainThread())
-                .subscribe(options -> {
-                    if (isAttached()) {
-                        currentFilters = options.filters;
-                        currentSorts = options.sorts;
-                        renderToolbar(currentCategoryLabel(), currentFilters, currentSorts);
-                    }
-                }, error -> android.util.Log.w("MissAV", "Page options unavailable", error)));
+        reloadPageOptions(false);
     }
 
     private void reloadCategories(final boolean refresh) {
@@ -109,6 +102,37 @@ final class MissAvBrowseHeader {
                         if (expandedGroup >= 0) {
                             renderExpandedGroup();
                         }
+                    }
+                }));
+    }
+
+    private void reloadPageOptions(final boolean refresh) {
+        if (loadingOptions) {
+            return;
+        }
+        loadingOptions = true;
+        optionLoadFailed = false;
+        if (refresh) {
+            MissAvParsingHelper.invalidateDocument(pageUrl);
+        }
+        subscriptions.add(Single.fromCallable(() ->
+                        MissAvBrowseCatalog.getPageOptions(pageUrl))
+                .subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(options -> {
+                    loadingOptions = false;
+                    if (isAttached()) {
+                        optionLoadFailed = false;
+                        currentFilters = options.filters;
+                        currentSorts = options.sorts;
+                        renderToolbar(currentCategoryLabel(), currentFilters, currentSorts);
+                    }
+                }, error -> {
+                    loadingOptions = false;
+                    optionLoadFailed = true;
+                    android.util.Log.w("MissAV", "Page filters unavailable", error);
+                    if (isAttached()) {
+                        renderToolbar(currentCategoryLabel(), currentFilters, currentSorts);
                     }
                 }));
     }
@@ -265,7 +289,12 @@ final class MissAvBrowseHeader {
             toolbar.addView(sort);
             sort.setOnClickListener(v -> showOptions("Sort", sorts));
         }
-    }
+
+        if (optionLoadFailed) {
+            final TextView retry = textButton("Retry options");
+            retry.setOnClickListener(v -> reloadPageOptions(true));
+            toolbar.addView(retry);
+        }    }
 
     private String activeLabel(final String prefix, final List<MissAvBrowseCatalog.Entry> items) {
         for (final MissAvBrowseCatalog.Entry entry : items) {
