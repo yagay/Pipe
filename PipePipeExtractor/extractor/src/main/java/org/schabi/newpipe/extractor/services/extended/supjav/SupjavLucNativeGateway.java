@@ -15,9 +15,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -56,15 +56,15 @@ final class SupjavLucNativeGateway {
             .followSslRedirects(false)
             .dns(host -> {
                 if (!SupjavProviderExtractor.safePublicHttps("https://" + host)) {
-                    throw new IOException("Unsafe network hostname");
+                    throw new UnknownHostException("Unsafe network hostname");
                 }
                 final List<InetAddress> resolved = Dns.SYSTEM.lookup(host);
-                if (resolved.isEmpty()) throw new IOException("No public network address");
+                if (resolved.isEmpty()) throw new UnknownHostException("No public network address");
                 for (final InetAddress ip : resolved) {
                     if (ip.isAnyLocalAddress() || ip.isLoopbackAddress()
                             || ip.isLinkLocalAddress() || ip.isSiteLocalAddress()
                             || ip.isMulticastAddress() || isNonPublicIpv4(ip)) {
-                        throw new IOException("Non-public network address");
+                        throw new UnknownHostException("Non-public network address");
                     }
                 }
                 return resolved;
