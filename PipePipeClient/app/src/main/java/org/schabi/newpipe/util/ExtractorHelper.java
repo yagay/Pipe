@@ -130,7 +130,18 @@ public final class ExtractorHelper {
 
     public static StreamInfo getNewStreamInfo(final int serviceId, final String url) throws ExtractionException, IOException {
 //        if (true) {
-            return StreamInfo.getInfo(NewPipe.getService(serviceId), url);
+            final StreamInfo result = StreamInfo.getInfo(NewPipe.getService(serviceId), url);
+            if (serviceId == ServiceList.Supjav.getServiceId()) {
+                final String sources = result.getVideoStreams().stream()
+                        .limit(15)
+                        .map(stream -> stream.getId() == null ? "unknown"
+                                : stream.getId().replaceAll("[^A-Za-z0-9|_-]", ""))
+                        .collect(java.util.stream.Collectors.joining(","));
+                DiagnosticLog.event("SUPJAV", "STREAM_RESOLVED",
+                        "count=" + result.getVideoStreams().size()
+                                + " providers=" + sources);
+            }
+            return result;
 //        }
 //        StreamInfo result = null;
 //        if (!ServiceList.YouTube.isYtdlpEnabled()) {
