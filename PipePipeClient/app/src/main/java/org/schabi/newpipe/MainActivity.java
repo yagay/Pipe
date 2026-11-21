@@ -65,7 +65,6 @@ import org.schabi.newpipe.extractor.StreamingService;
 import org.schabi.newpipe.extractor.exceptions.ExtractionException;
 import org.schabi.newpipe.extractor.exceptions.ReCaptchaException;
 import org.schabi.newpipe.extractor.services.peertube.PeertubeInstance;
-import org.schabi.newpipe.extractor.services.missav.MissAvService;
 import org.schabi.newpipe.fragments.BackPressable;
 import org.schabi.newpipe.fragments.MainFragment;
 import org.schabi.newpipe.fragments.detail.VideoDetailFragment;
@@ -227,24 +226,12 @@ public class MainActivity extends AppCompatActivity {
         final int currentServiceId = ServiceHelper.getSelectedServiceId(this);
         final StreamingService service = NewPipe.getService(currentServiceId);
 
+        // All site-specific kiosks are presented in the native browse header.
+        // The global drawer is reserved for application-level navigation.
         drawerKioskIds.clear();
-        if (service instanceof MissAvService) {
-            // MissAV website channels, categories and filters belong to the page header.
-            // Do not duplicate them (or the three default kiosks) in the global drawer.
-            drawerLayoutBinding.navigation.getMenu()
-                    .add(R.id.menu_tabs_group, ITEM_ID_HOME, ORDER, "Home")
-                    .setIcon(R.drawable.ic_home);
-        } else {
-            drawerKioskIds.addAll(service.getKioskList().getAvailableKiosks());
-            java.util.Collections.sort(drawerKioskIds);
-            for (int kioskIndex = 0; kioskIndex < drawerKioskIds.size(); kioskIndex++) {
-                final String ks = drawerKioskIds.get(kioskIndex);
-                drawerLayoutBinding.navigation.getMenu()
-                        .add(R.id.menu_tabs_group, ITEM_ID_KIOSK_BASE + kioskIndex, ORDER,
-                                KioskTranslator.getTranslatedKioskName(ks, this))
-                        .setIcon(KioskTranslator.getKioskIcon(ks));
-            }
-        }
+        drawerLayoutBinding.navigation.getMenu()
+                .add(R.id.menu_tabs_group, ITEM_ID_HOME, ORDER, "Home")
+                .setIcon(R.drawable.ic_home);
 
         drawerLayoutBinding.navigation.getMenu()
                 .add(R.id.menu_tabs_group, ITEM_ID_SUBSCRIPTIONS, ORDER,
